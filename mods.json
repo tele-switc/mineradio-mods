@@ -40,18 +40,18 @@
     },
     {
       "id": "server-audio-headers",
-      "title": "音频代理的 Referer（1 行；B 站/咪咕的直链缺了它就 403）",
+      "title": "音频代理的 Referer（1 行；B 站直链缺了它就 403，archive.org 与 RP 顺带把 Range 一起保住）",
       "file": "server.js",
       "mode": "insert-after",
       "locator": "^function audioProxyHeadersFor\\(audioUrl, range\\) \\{$",
       "block": [
-        "  try { const m = require('./mods/server-api.js').audioProxyHeaders(audioUrl); if (m) return m; } catch (e) { }"
+        "  try { const m = require('./mods/server-api.js').audioProxyHeaders(audioUrl, range); if (m) return m; } catch (e) { }"
       ],
-      "blockNote": "上游这个函数是模块私有的、代理走的正是它；不插这一行就得自己重写一遍音频代理"
+      "blockNote": "上游这个函数是模块私有的、代理走的正是它；不插这一行就得自己重写一遍音频代理。range 必须传进来：我们一 return 就跳过了上游那句 if (range) headers.Range = range，archive.org 上整张专辑的 FLAC 丢了 Range 就没法拖进度条"
     },
     {
       "id": "server-audio-type",
-      "title": "音频代理的容器类型（1 行；B 站 DASH 的 mp4a 与咪咕 FLAC 要报对 Content-Type）",
+      "title": "音频代理的容器类型（1 行；B 站 DASH 的 mp4a、archive.org 的 opus、RP 无扩展名的 AAC 要报对 Content-Type）",
       "file": "server.js",
       "mode": "insert-after",
       "locator": "^function audioContentTypeForUrl\\(audioUrl, upstreamType\\) \\{$",
@@ -131,15 +131,29 @@
       "note": "不改 package.json 的 mineradio.update.provider，改成接管 /api/update/*：那个 JSON 一更新就回来了"
     },
     {
-      "id": "extra-sources",
-      "title": "咪咕 / Internet Archive / Radio Paradise 三个免登录源",
-      "enabled": false,
-      "status": "待搬：本体文件已在包里，缺后端路由与渲染层档位/换源接线",
-      "anchors": ["server-routes"],
+      "id": "free-sources",
+      "title": "免登录的两个外挂源：Internet Archive 公开音频 + Radio Paradise 直播电台",
+      "enabled": true,
+      "anchors": ["server-routes", "server-audio-headers", "server-audio-type", "playback-gapless-url", "playback-url", "renderer-modules"],
       "files": [
-        { "from": "files/migu-api.js", "to": "migu-api.js" },
         { "from": "files/internetarchive-api.js", "to": "internetarchive-api.js" },
-        { "from": "files/radioparadise-api.js", "to": "radioparadise-api.js" }
+        { "from": "files/radioparadise-api.js", "to": "radioparadise-api.js" },
+        { "from": "files/mods/server-api.js", "to": "mods/server-api.js" },
+        { "from": "files/public/js/mods/loader.js", "to": "public/js/mods/loader.js" },
+        { "from": "files/public/js/mods/05-sources.js", "to": "public/js/mods/05-sources.js" },
+        { "from": "files/public/js/mods/10-quick-search-host.js", "to": "public/js/mods/10-quick-search-host.js" },
+        { "from": "files/public/quick-search.html", "to": "public/quick-search.html" }
+      ],
+      "note": "两个都免登录、无会话、不需要 API key。IA 一行 = archive.org 的一个条目（常为整张专辑/整场演出），实际播哪个文件由后端按音质档过一遍 Chromium 可播性白名单再挑；RP 是 320k AAC 连续直播，没有单曲与同步歌词，All 档里不掺它（只在自己的档位出现）"
+    },
+    {
+      "id": "migu-source",
+      "title": "咪咕音乐（需要会话：官方登录窗 + cookie 交给后端）",
+      "enabled": false,
+      "status": "待搬：本体文件已在包里，缺后端路由、REGISTRY 那一项，以及把 cookie 存到 ~/.mineradio/migu-cookie（别存安装目录，更新会没）",
+      "anchors": ["server-routes", "server-audio-headers", "server-audio-type", "playback-url"],
+      "files": [
+        { "from": "files/migu-api.js", "to": "migu-api.js" }
       ]
     }
   ]

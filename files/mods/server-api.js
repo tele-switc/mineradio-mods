@@ -2,11 +2,14 @@
 //  mineradio-mods 后端外挂（上游 server.js 里只加了三行指向这里）
 //
 //  这一层负责：
-//   - /api/bilibili/*  搜索、分 P（合集）、取址、歌词、会话
+//   - /api/bilibili/*      搜索、分 P（合集）、取址、歌词、会话
+//   - /api/internetarchive/*  archive.org 公开音频：搜索、取址、歌词
+//   - /api/radioparadise/*    RP 直播电台：频道、当关键词搜索、取流、正在播放、歌词
 //   - 音频代理的两个补丁：B 站直链要带 Referer，DASH 的 mp4a 要报对 Content-Type
 //
 //  会话（cookie）放在 ~/.mineradio/bili-cookie —— 故意不放安装目录：
 //  软件更新会把 resources/app 整个换掉，放那儿等于每次更新都要重新登录一次。
+//  IA 与 RP 免登录、无会话，所以这两个源不需要任何落盘的东西。
 // ============================================================
 
 'use strict';
@@ -24,6 +27,22 @@ function loadBili() {
   if (bili !== null) return bili;
   try { bili = require('../bilibili-api'); } catch (e) { console.warn(MARK, 'bilibili-api.js 没就位：' + e.message); bili = false; }
   return bili;
+}
+
+// IA / RP 的适配层文件自己不含任何会话与密钥，require 不到时只让对应那一路由报错，
+// 不连累 B 站（三个源共用这一个入口文件）
+let archive = null;
+function loadArchive() {
+  if (archive !== null) return archive;
+  try { archive = require('../internetarchive-api'); } catch (e) { console.warn(MARK, 'internetarchive-api.js 没就位：' + e.message); archive = false; }
+  return archive;
+}
+
+let rp = null;
+function loadRp() {
+  if (rp !== null) return rp;
+  try { rp = require('../radioparadise-api'); } catch (e) { console.warn(MARK, 'radioparadise-api.js 没就位：' + e.message); rp = false; }
+  return rp;
 }
 
 function readCookie() {
@@ -56,13 +75,26 @@ const int = (value, fallback) => {
   return Number.isFinite(n) ? n : fallback;
 };
 
-// 音频代理补丁：命中就返回整套 headers，没命中返回 null 让上游自己处理
-function audioProxyHeaders(audioUrl) {
+// 音频代理补丁：命中就返回整套 headers，没命中返回 null 让上游自己处理。
+// range 必须一起带上 —— 注入点是在上游那个函数的第一行 return，我们返回就等于
+// 跳过了它自己的 `if (range) headers.Range = range`；archive.org 上整张专辑动辄
+// 上百 MB，丢了 Range 浏览器就没法拖进度条。
+function audioProxyHeaders(audioUrl, range) {
   try {
     const host = new URL(String(audioUrl || '')).hostname.toLowerCase();
+    let referer = '';
     if (host.includes('bilivideo.com') || host.includes('bilibili.com') || host.includes('biliapi')) {
-      return { 'User-Agent': 'Mozilla/5.0', Referer: 'https://www.bilibili.com/' };
+      referer = 'https://www.bilibili.com/';
+    } else if (host.includes('archive.org')) {
+      // 实测带错 Referer 也能取到，仍然按各自站点名设，免得上游哪天开始校验
+      referer = 'https://archive.org/';
+    } else if (host.includes('radioparadise.com')) {
+      referer = 'https://radioparadise.com/';
     }
+    if (!referer) return null;
+    const headers = { 'User-Agent': 'Mozilla/5.0', Referer: referer };
+    if (range) headers.Range = String(range);
+    return headers;
   } catch (_) { }
   return null;
 }
@@ -70,9 +102,21 @@ function audioProxyHeaders(audioUrl) {
 // B 站 DASH 的音频流是 mp4a（容器仍是 mp4），上游按扩展名猜会落到 application/octet-stream
 function audioContentType(audioUrl, upstreamType) {
   try {
-    const pathname = new URL(String(audioUrl || '')).pathname.toLowerCase();
+    const parsed = new URL(String(audioUrl || ''));
+    const pathname = parsed.pathname.toLowerCase();
+    const host = parsed.hostname.toLowerCase();
     if (/\.m4a$|\.mp4a$|mp4a/.test(pathname)) return 'audio/mp4';
     if (/\.m4s$/.test(pathname)) return String(upstreamType || 'audio/mp4');
+    // archive.org 的标准档有 ogg/oga/opus：上游那个函数没有 .opus 与 .oga 两条，
+    // 会被兜成 audio/mpeg，Opus 塞进 MPEG 壳里 Chromium 解不出来
+    if (/\.ogg$|\.oga$|\.opus$/.test(pathname)) return 'audio/ogg';
+    if (/\.aac$/.test(pathname)) return 'audio/aac';
+    // RP 的流地址是 https://stream-dc1.radioparadise.com/aac-320 —— 没有扩展名，
+    // 上游会兜成 audio/mpeg；按 slug 里的字样报对的容器
+    if (host.includes('radioparadise.com')) {
+      if (/mp3/.test(pathname)) return 'audio/mpeg';
+      if (/aac|m4a/.test(pathname)) return 'audio/aac';
+    }
   } catch (_) { }
   return '';
 }
@@ -144,6 +188,132 @@ async function handle(req, res, url, pn) {
   return false;
 }
 
+// ---- Internet Archive：免登录、无需 API key 的公开音频库 ----
+// 只做在线播放直链中转，不缓存、不重新分发；挑文件时过 Chromium 可播性白名单（适配层里）。
+async function handleArchiveRoute(res, url, pn) {
+  const api = loadArchive();
+  if (!api) { sendJSON(res, { provider: 'internetarchive', error: 'ARCHIVE_API_MISSING', songs: [] }, 500); return true; }
+
+  if (pn === '/api/internetarchive/search') {
+    try {
+      const kw = url.searchParams.get('keywords') || url.searchParams.get('q') || '';
+      const limit = Math.max(4, Math.min(30, int(url.searchParams.get('limit'), 12)));
+      const offset = Math.max(0, int(url.searchParams.get('offset'), 0));
+      const result = await api.handleArchiveSearch(kw, limit, offset);
+      const songs = result.songs || [];
+      sendJSON(res, {
+        provider: 'internetarchive',
+        songs,
+        total: result.total || 0,
+        offset,
+        limit,
+        nextOffset: offset + songs.length,
+        hasMore: result.hasMore === true && songs.length > 0,
+        message: result.error ? 'archive.org 搜索暂时不可用：' + result.error : '',
+      });
+    } catch (err) {
+      console.error(MARK, '[ArchiveSearch]', err);
+      sendJSON(res, { provider: 'internetarchive', error: String((err && err.message) || err), songs: [] }, 500);
+    }
+    return true;
+  }
+
+  if (pn === '/api/internetarchive/song/url') {
+    try {
+      sendJSON(res, await api.handleArchiveSongUrl({
+        archiveId: url.searchParams.get('archiveId') || url.searchParams.get('identifier') || '',
+        file: url.searchParams.get('file') || '',
+        quality: url.searchParams.get('quality') || '',
+      }));
+    } catch (err) {
+      console.error(MARK, '[ArchiveSongUrl]', err);
+      sendJSON(res, { provider: 'internetarchive', url: '', playable: false, error: String((err && err.message) || err) }, 500);
+    }
+    return true;
+  }
+
+  // archive.org 条目基本没有逐字歌词：给确定答复，别拿歌名去网易云捞一份错歌词
+  if (pn === '/api/internetarchive/lyric') {
+    sendJSON(res, await api.handleArchiveLyric());
+    return true;
+  }
+
+  return false;
+}
+
+// ---- Radio Paradise：免登录的公开 320k AAC 直播 ----
+// 直播源没有单曲、没有可拖拽进度、没有同步歌词；只下发适配层里已实测过的频道 slug。
+async function handleRpRoute(res, url, pn) {
+  const api = loadRp();
+  if (!api) { sendJSON(res, { provider: 'radioparadise', error: 'RP_API_MISSING', songs: [] }, 500); return true; }
+  const region = url.searchParams.get('region') || '';
+
+  if (pn === '/api/radioparadise/channels') {
+    sendJSON(res, { provider: 'radioparadise', live: true, channels: api.handleRpChannels(region) });
+    return true;
+  }
+
+  if (pn === '/api/radioparadise/search') {
+    try {
+      const kw = url.searchParams.get('keywords') || url.searchParams.get('q') || '';
+      const limit = Math.max(1, Math.min(20, int(url.searchParams.get('limit'), 12)));
+      const offset = Math.max(0, int(url.searchParams.get('offset'), 0));
+      const all = await api.handleRpSearch(kw, limit + offset, region);
+      const songs = all.slice(offset, offset + limit);
+      sendJSON(res, {
+        provider: 'radioparadise',
+        live: true,
+        songs,
+        offset,
+        limit,
+        nextOffset: offset + songs.length,
+        hasMore: false,
+        message: songs.length ? '' : 'Radio Paradise 没有命中该关键词的频道（直播源没有单曲搜索，可试 rock / mellow / global / serenity）',
+      });
+    } catch (err) {
+      console.error(MARK, '[RadioParadiseSearch]', err);
+      sendJSON(res, { provider: 'radioparadise', error: String((err && err.message) || err), songs: [] }, 500);
+    }
+    return true;
+  }
+
+  if (pn === '/api/radioparadise/song/url') {
+    try {
+      // chan 用 != null 而不是真值：Main Mix 的 chan 就是 0。
+      // 没有 chan 时**不要**塞一个空字符串进去 —— 适配层判的是 rpChan != null，
+      // 空串会把它顶掉，slug 那份兜底就永远走不到。
+      const input = { slug: url.searchParams.get('slug') || '', region };
+      const chanParam = url.searchParams.get('chan');
+      const chanAlt = url.searchParams.get('rpChan');
+      if (chanParam != null && chanParam !== '') input.rpChan = chanParam;
+      else if (chanAlt != null && chanAlt !== '') input.rpChan = chanAlt;
+      sendJSON(res, await api.handleRpSongUrl(input));
+    } catch (err) {
+      console.error(MARK, '[RadioParadiseSongUrl]', err);
+      sendJSON(res, { provider: 'radioparadise', url: '', playable: false, error: String((err && err.message) || err) }, 500);
+    }
+    return true;
+  }
+
+  if (pn === '/api/radioparadise/now-playing') {
+    try {
+      sendJSON(res, await api.handleRpNowPlaying(url.searchParams.get('chan') || ''));
+    } catch (err) {
+      console.error(MARK, '[RadioParadiseNowPlaying]', err);
+      sendJSON(res, { provider: 'radioparadise', error: String((err && err.message) || err) }, 500);
+    }
+    return true;
+  }
+
+  // 与 B 站同一处理方式：直播没有同步歌词，给确定答复而不是回退到网易云
+  if (pn === '/api/radioparadise/lyric') {
+    sendJSON(res, { provider: 'radioparadise', lyric: '', trans: '', reason: 'RP_NO_SYNCED_LYRICS' });
+    return true;
+  }
+
+  return false;
+}
+
 function tryHandle(req, res, url, pn) {
   // 更新检查：原版会去 GitHub 拉 release，而作者已停更；外挂装在上面之后
   // "有新版本"其实是"更新会把外挂冲掉"。所以这里直接答"没有更新"，
@@ -162,8 +332,11 @@ function tryHandle(req, res, url, pn) {
     sendJSON(res, { ok: false, error: 'UPDATE_DISABLED_BY_MODS', externalOnly: true }, 400);
     return true;
   }
-  if (!/^\/api\/bilibili\//.test(pn)) return false;
-  handle(req, res, url, pn).catch((e) => {
+  if (!/^\/api\/(bilibili|internetarchive|radioparadise)\//.test(pn)) return false;
+  const run = pn.indexOf('/api/bilibili/') === 0 ? handle(req, res, url, pn)
+    : pn.indexOf('/api/internetarchive/') === 0 ? handleArchiveRoute(res, url, pn)
+      : handleRpRoute(res, url, pn);
+  run.catch((e) => {
     console.warn(MARK, '路由异常：' + ((e && e.stack) || e));
     try { sendJSON(res, { error: String((e && e.message) || e), songs: [] }, 500); } catch (_) { }
   });

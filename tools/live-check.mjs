@@ -196,6 +196,98 @@ try {
     check('那一段带自己的 cid（外挂的取址锚点生效，不是整条第一 P）',
       !!played.cid && played.part > 0, `cid=${played.cid || '空'} P${played.part}`);
   }
+  // ---- 免登录的两个外挂源：Internet Archive + Radio Paradise ----
+  // 浮窗还开着，接着用它（档位切换、真实起播都走用户那条路，不从主窗口抄近道）
+  const modKeys = JSON.parse(await main.ev(`JSON.stringify({
+    ia: window.__mrModsHas('internetarchive') ? 1 : 0,
+    rp: window.__mrModsHas('radioparadise') ? 1 : 0,
+    keyIa: String(window.songProviderKey({ archiveId: 'Foo_1956' })),
+    keyRp0: String(window.songProviderKey({ rpChan: 0, rpSlug: 'aac-320', provider: 'radioparadise' })),
+    keyRpSlug: String(window.songProviderKey({ id: 'rp:5', rpSlug: 'serenity', provider: 'radioparadise' })),
+    norm: [window.normalizePlaybackProvider('internetarchive'), window.normalizePlaybackProvider('radioparadise')].join(','),
+    lyricIa: String(window.lyricEndpointForSong({ archiveId: 'Foo_1956' })),
+    lyricRp: String(window.lyricEndpointForSong({ rpChan: 1 })) })`));
+  check('IA / RP 两个源都注册上了', modKeys.ia === 1 && modKeys.rp === 1, JSON.stringify({ ia: modKeys.ia, rp: modKeys.rp }));
+  // 上游那条三元链对不认识的源一律回 'netease'；Main Mix 的 chan 是 0，真值判断会把它当成没 chan
+  check('songProviderKey 认得 IA 与 RP（含 chan=0 那个坑）',
+    modKeys.keyIa === 'internetarchive' && modKeys.keyRp0 === 'radioparadise' && modKeys.keyRpSlug === 'radioparadise',
+    `archiveId→${modKeys.keyIa}，chan0→${modKeys.keyRp0}，slug→${modKeys.keyRpSlug}`);
+  check('normalizePlaybackProvider 认得新源（否则起播那条 if/else 会去问网易云）',
+    modKeys.norm === 'internetarchive,radioparadise', modKeys.norm);
+  check('新源的歌词走自己的端点，不掉进网易云兜底分支',
+    /^\/api\/internetarchive\/lyric/.test(modKeys.lyricIa) && modKeys.lyricIa.indexOf('bvid') < 0
+      && modKeys.lyricRp === '/api/radioparadise/lyric', `${modKeys.lyricIa} | ${modKeys.lyricRp}`);
+
+  const backend = JSON.parse(await main.ev(`Promise.all([
+      fetch('/api/radioparadise/channels').then(r=>r.json()),
+      fetch('/api/internetarchive/search?keywords=' + encodeURIComponent('Miles Davis') + '&limit=4&offset=0').then(r=>r.json())
+    ]).then(function(a){ return JSON.stringify({ channels: (a[0].channels||[]).length, songs: (a[1].songs||[]).length, first: (a[1].songs||[])[0] || {} }); })`));
+  check('后端外挂：RP 频道表 + IA 搜索都回东西',
+    backend.channels >= 4 && backend.songs > 0 && !!backend.first.archiveId,
+    `${backend.channels} 个频道 / IA 命中 ${backend.songs} 条，首条 ${backend.first.archiveId || '无'}`);
+
+  const iaUrl = JSON.parse(await main.ev(`fetch('/api/internetarchive/song/url?archiveId='
+    + encodeURIComponent(${JSON.stringify(backend.first.archiveId || '')})).then(r=>r.json())
+    .then(function(d){ return JSON.stringify({ playable: !!d.playable, url: String(d.url||'').slice(0,40), quality: d.quality||'', dur: Number(d.durationSeconds)||0, proxy: !!d.needsProxy }); })`));
+  check('IA 取址：按音质档从条目里挑到一个浏览器能解的文件，并带时长',
+    iaUrl.playable && /^https:\/\/(archive\.org|ia\d+\.us\.archive\.org)\//.test(iaUrl.url) && iaUrl.dur > 0,
+    `${iaUrl.quality || '?'} 档 · ${iaUrl.dur}s · ${iaUrl.url}…`);
+
+  const rpUrl = JSON.parse(await main.ev(`fetch('/api/radioparadise/song/url?chan=0').then(r=>r.json())
+    .then(function(d){ return JSON.stringify({ playable: !!d.playable, url: String(d.url||''), live: !!d.live }); })`));
+  check('RP 取址：Main Mix（chan=0）拿到直播流', rpUrl.playable && /radioparadise\.com/.test(rpUrl.url), rpUrl.url);
+
+  const modTabs = await over.ev(`Array.prototype.map.call(document.querySelectorAll('#qs-tabs button'),function(b){return b.textContent;}).join(',')`);
+  check('平台档里有 IA 与 RP', /IA/.test(modTabs) && /RP/.test(modTabs), modTabs);
+
+  async function searchInTab(mode, text) {
+    if (!(await clickTab(mode))) return { ok: false, why: '切不过去那一档' };
+    await over.ev(`(function(){var i=document.getElementById('qs-input'); i.value=${JSON.stringify(text)}; i.dispatchEvent(new Event('input'));})()`);
+    let n = 0; let srcs = '';
+    for (let i = 0; i < 40; i++) {
+      await sleep(700);
+      n = await over.ev(`document.querySelectorAll('.qs-row .qs-src[data-src="${mode}"]').length`);
+      if (n) break;
+      srcs = await over.ev(`(function(){var s=document.querySelector('.qs-state');return s?s.textContent.slice(0,60):'';})()`);
+    }
+    return { ok: n > 0, n, note: srcs };
+  }
+
+  const iaSearch = await searchInTab('internetarchive', 'Miles Davis');
+  const iaBadges = await over.ev(`Array.prototype.slice.call(document.querySelectorAll('.qs-row .qs-badge'),0,3).map(function(b){return b.textContent;}).join(' ')`);
+  check('浮窗 IA 档搜到 archive.org 条目', iaSearch.ok, iaSearch.ok ? `${iaSearch.n} 条` : `0 条（列表状态：${iaSearch.note || '（空）'}）`);
+  check('IA 那几行老实标了"条目"（一行常是一整张专辑，不是单曲）', /条目/.test(iaBadges), iaBadges);
+
+  // 真起播：从浮窗按回车 → 主窗口排队并开播，音频元素真的在跑才算数
+  async function playActiveRow(expectProvider, label) {
+    await over.press(KEY.Down);
+    await over.press(KEY.Enter);
+    let got = null;
+    for (let i = 0; i < 45; i++) {
+      await sleep(600);
+      got = JSON.parse(await main.ev(`JSON.stringify({
+        provider: (typeof currentCoverSong==='function'&&currentCoverSong())?String(currentCoverSong().provider||currentCoverSong().source||''):'',
+        name: (typeof currentCoverSong==='function'&&currentCoverSong())?String(currentCoverSong().name||'').slice(0,40):'',
+        src: (typeof audio!=='undefined'&&audio&&audio.src)?audio.src.slice(0,70):'',
+        dur: (typeof audio!=='undefined'&&audio&&isFinite(audio.duration))?Number(audio.duration).toFixed(0):'live',
+        playing:!!(typeof audio!=='undefined'&&audio&&audio.src&&!audio.paused&&!audio.ended)})`));
+      if (got.playing && got.provider === expectProvider) break;
+    }
+    check(`${label}：从浮窗起播真的出声`, !!got && got.playing && got.provider === expectProvider,
+      got ? `播「${got.name}」· ${got.dur === 'live' ? '直播/时长未知' : got.dur + 's'} · ${got.src}` : '（没取到播放状态）');
+    return got;
+  }
+  const iaPlayed = await playActiveRow('internetarchive', 'IA 整条播起来（经 /api/audio 代理，带 Range 才能拖）');
+  if (iaPlayed) {
+    check('IA 的直链确实走了本地音频代理（不是让浏览器直连 archive.org）',
+      /\/api\/audio\?url=/.test(iaPlayed.src), iaPlayed.src);
+  }
+  const rpSearch = await searchInTab('radioparadise', 'rock');
+  const rpBadges = await over.ev(`Array.prototype.slice.call(document.querySelectorAll('.qs-row .qs-badge'),0,3).map(function(b){return b.textContent;}).join(' ')`);
+  check('浮窗 RP 档把命中的频道当条目列出来', rpSearch.ok, rpSearch.ok ? `${rpSearch.n} 条，徽章=${rpBadges}` : `0 条（列表状态：${rpSearch.note || '（空）'}）`);
+  check('RP 那几行标了"直播"（没有单曲、拖不了进度）', /直播/.test(rpBadges), rpBadges);
+  if (rpSearch.ok) await playActiveRow('radioparadise', 'RP 直播开播（无扩展名的 AAC 要报对 Content-Type）');
+
   // ---- 主界面那一侧：搜索结果行里的分 P 面板（包装 searchSongResultHtml 注入的）----
   // 脚本化搜索必须先把 #search-input 的值设好再调 doSearch：上游那个函数有个
   // "输入框内容与查询词不一致就整批丢掉"的守卫，不设值会得到 0 行，看着像"没结果"。
@@ -242,6 +334,43 @@ try {
       .catch(() => '');
     check('展开后给出「整包入队 N 段」', /整包入队/.test(pack), pack || '（没展开到带整包入队的那条）');
   }
+
+  // ---- 主界面的 All 档里也要看得见 IA 行（两个坑：拼在数组末尾就永远不显示；
+  // 标签函数不认新源会把行标成"NE"）----
+  await main.ev(`(function(){var el=document.getElementById('search-input'); el.value='Miles Davis';})()`);
+  await main.ev(`doSearch('Miles Davis')`);
+  let iaPool = 0; let poolTotal = 0;
+  for (let i = 0; i < 40; i++) {
+    await sleep(700);
+    const snap = JSON.parse(await main.ev(`JSON.stringify({
+      total: (typeof playlist!=='undefined'&&playlist)?playlist.length:0,
+      ia: (typeof playlist!=='undefined'&&playlist)?playlist.filter(function(s){ return window.__mrModsProviderOf(s)==='internetarchive'; }).length:0 })`));
+    poolTotal = snap.total; iaPool = snap.ia;
+    if (snap.ia) break;
+  }
+  check('IA 那一页并进了主界面 All 档的池子（外挂源进了软件自己的搜索路径）',
+    iaPool > 0, `${iaPool} 条 IA / 池子里共 ${poolTotal} 条`);
+
+  // 上游只画前 MUSIC_SEARCH_INITIAL_VISIBLE=18 行，剩下的靠滚动逐批追加。
+  // IA 那些条目名与"Miles Davis"差得远，打分排不进首屏属正常 —— 所以要走"往下滚"这条真实路径
+  // 去证明它们确实可达（而不是拼在数组末尾永远看不见），顺带看源标签写的是什么。
+  let iaRows = 0; let iaTagText = ''; let batches = 0; let iaIndex = -1;
+  for (let i = 0; i < 20 && !iaRows; i++) {
+    iaRows = await main.ev(`document.querySelectorAll('.tag-source.internetarchive').length`);
+    if (iaRows) break;
+    await main.ev(`appendNextSearchResults()`);
+    await sleep(700);
+    batches += 1;
+  }
+  if (iaRows) {
+    iaTagText = await main.ev(`(document.querySelector('.tag-source.internetarchive')||{}).textContent || ''`);
+    iaIndex = await main.ev(`Array.prototype.slice.call(document.querySelectorAll('#search-results .search-result'))
+      .findIndex(function(r){ return !!r.querySelector('.tag-source.internetarchive'); })`);
+  }
+  check('滚到 IA 那一行能真的画出来（按软件自己的打分排过，不是拼在末尾看不见）',
+    iaRows > 0, iaRows ? `${iaRows} 行 IA，第 ${iaIndex + 1} 行（追加了 ${batches} 批）` : `池子里有 ${iaPool} 条，滚了 ${batches} 批还没画到`);
+  check('IA 行的源标签写的是 IA，不是被兜成 NE', iaRows > 0 && iaTagText === 'IA',
+    iaRows ? `标签文字=「${iaTagText}」` : '（没滚到 IA 行，这条没法验）');
 } catch (e) {
   console.error('[live-check 异常] ' + ((e && e.stack) || e));
   results.push({ name: '异常', ok: false });

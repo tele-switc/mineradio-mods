@@ -491,7 +491,6 @@
         { mode: 'kugou', label: 'KG', title: '酷狗音乐' },
         { mode: 'qishui', label: 'QS', title: '汽水音乐' },
         { mode: 'bilibili', label: 'BL', title: 'B 站' },
-        { mode: 'migu', label: 'MG', title: '咪咕音乐' },
         { mode: 'radioparadise', label: 'RP', title: 'Radio Paradise 直播电台（免登录 320k AAC）' },
         { mode: 'internetarchive', label: 'IA', title: 'Internet Archive 公开音频（免登录）' },
         { mode: 'podcast', label: 'Podcast', title: '播客' }
@@ -597,7 +596,7 @@
         var num = isPack ? '▶' : (song.qsPartIndex ? ('P' + song.qsPartIndex) : String(i + 1));
         var badge = song.qsBadge
           ? '<span class="qs-badge' + (song.qsBadgeWeak ? ' weak' : '') + '" title="'
-            + esc(isCollection ? (song.qsBadgeWeak ? '点一下看有没有分段（只有 B 站详情接口知道真实段数）' : '这是一整个合集：点开看分段，可单独播其中一首或整包入队') : '') + '">'
+            + esc(song.qsBadgeTitle || (isCollection ? (song.qsBadgeWeak ? '点一下看有没有分段（只有 B 站详情接口知道真实段数）' : '这是一整个合集：点开看分段，可单独播其中一首或整包入队') : '')) + '">'
             + esc(song.qsBadge) + '</span>'
           : '';
         var play = isCollection

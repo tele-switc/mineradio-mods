@@ -11,12 +11,13 @@
 
 | 功能族 | 上游落点 | 做法 | 依赖的本体文件 | 风险 / 备注 |
 |---|---|---|---|---|
-| B 站音源·后端 | `server.js` 路由链 | 锚点 `server-routes`（已有） | `bilibili-api.js`、`mods/server-api.js` | 已搬完，21 条路由里 B 站那 7 条已在 `server-api.js` |
+| B 站音源·后端 | `server.js` 路由链 | 锚点 `server-routes`（已有） | `bilibili-api.js`、`mods/server-api.js` | 已搬完；`server-api.js` 现在一共接管 15 条路由（B 站 7 + IA 3 + RP 5 + 更新检查 3 类） |
 | B 站音源·播放 | ✅ 已搬完：锚点 `playback-gapless-url`（`resolveAlbumGaplessPlaybackData` 里 `var qualityParam = ...` 之后一行）+ `playback-url`（主取址那串 if/else 之后、`if (data) {` 之前一行），两边都调 `window.__mrModsSongUrl` | 渲染层还要**包装三个上游函数**：`songProviderKey`（上游对不认识的源一律回 `netease`，不补这课 B 站行连徽章都出不来）、`normalizePlaybackProvider`、`lyricEndpointForSong`（B 站没官方歌词，别拿歌名去网易云捞一份错歌词） | `bilibili-api.js`、`mods/server-api.js`、`05-sources.js` | 已在 `.live` 干净实例上真跑过（live-check 14/14） |
 | B 站合集分 P（主界面） | `07-search.js`：`biliPartsCache`、`toggleBiliParts`、`playBiliPart`、`queueBiliCollection`、`searchSongResultHtml`、`biliCollectionPanelHtml` | 全部是**新增顶层函数** → 直接放进外挂模块即可；要改的只有"结果行点击走展开而不是播放"这一处 → **包装 `searchSongResultHtml`** | 无（逻辑自包含） | 浮窗那侧的分 P 已随 `quick-search` 一起搬（宿主自带兜底实现，不依赖主界面那套） |
 | B 站非音乐过滤 | `bilibili-api.js` 的 `classifyBiliSearchResult` | 本体文件里，**零锚点** | `bilibili-api.js` | 已搬完 |
-| 咪咕 / IA / RadioParadise 后端 | `server.js` 链 | 锚点 `server-routes`（已有） | `migu-api.js` 等三个文件已在包里 | 把开发版 `server.js` 里对应 `pn ===` 分支搬进 `mods/server-api.js` |
-| 咪咕会话 | `server.js` 的 cookie 存取（`configuredCookieStores` 一带） | 外挂自己存 `~/.mineradio/migu-cookie`，**不动上游** | `migu-api.js` | 放家目录而不是安装目录，更新不丢 |
+| IA / RadioParadise | ✅ 已搬完（`free-sources`）：`mods/server-api.js` 里 8 条路由 + `05-sources.js` 源表两项 + 浮窗 IA / RP 两档 | 渲染层没有新锚点，全靠已有的 6 个；顺带**包装了 `songSourceTagHtml`**（上游那条只认 NE/QQ/KG/QS/SP 的三元链会把新源那行标成"NE"，class 对了文字还是错的） | `internetarchive-api.js`、`radioparadise-api.js`、`mods/server-api.js`、`05-sources.js` | 已在 `.live` 干净实例真跑到 39/39：含从浮窗起播 IA 条目与 RP 直播、`rpChan=0` 那个真值判断坑、All 档滚到 IA 行的标签文字 |
+| 咪咕后端 | `server.js` 链 | 锚点 `server-routes`（已有），照上面 IA/RP 那行的形状加 `handleMiguRoute` | `migu-api.js`（已在包里） | 比 IA/RP 多一件事：会话 |
+| 咪咕会话 | `server.js` 的 cookie 存取（`configuredCookieStores` 一带） | 外挂自己存 `~/.mineradio/migu-cookie`，**不动上游**（B 站那套 `readCookie`/`writeCookie` 直接照抄） | `migu-api.js` | 放家目录而不是安装目录，更新不丢 |
 | 自动换源（免登录源参与接力） | `11-provider-fallback.js`（开发版 +225 行） | **包装** `sourceFallback*` 那一组顶层函数；候选池要加新源 | 各 `*-api.js` | 这族最费时间，且和音质档位耦合 |
 | 音质档位 / 登录入口 | `00-api-quality-output.js`、`01-login-modal-utils.js` 的 `platformStatus`、`04-user-modal-logout.js` 的 `openProviderLogin`、`03-login-modal-flows.js` | **包装**（都是顶层函数）；UI 行用运行时 DOM 注入 | — | 上游有个"登录彩蛋门"，别硬拆 |
 | 贴边播放小组件 | `main.js` 的 mini 窗口 + `mini-player.html` + `desktop/mini-player-runtime.js` | 窗口在 `mods-host.js` 里自建（已有先例：浮窗就是这么做的）；入口按钮 DOM 注入 | `mini-player.html`、`mini-player-runtime.js` | 与桌面嵌入模式的兼容要单独验 |

@@ -57,15 +57,16 @@ var QUICK_SEARCH_MODES = [
   { mode: 'kugou', label: 'KG', title: '酷狗音乐' },
   { mode: 'qishui', label: 'QS', title: '汽水音乐' },
   { mode: 'bilibili', label: 'BL', title: 'B 站（mineradio-mods 外挂源）', modProvider: true },
+  { mode: 'radioparadise', label: 'RP', title: 'Radio Paradise 直播电台（免登录 320k AAC，mineradio-mods 外挂源）', modProvider: true },
+  { mode: 'internetarchive', label: 'IA', title: 'Internet Archive 公开音频（免登录，mineradio-mods 外挂源）', modProvider: true },
   { mode: 'podcast', label: 'Podcast', title: '播客' },
 ];
-// 外挂源那一档只有后端真在（装了 bili-source）才亮起来，免得点出一个空列表。
+// 外挂源那一档只有后端真在（装了对应的源）才亮起来，免得点出一个空列表。
 QUICK_SEARCH_MODES = QUICK_SEARCH_MODES.filter(function (entry) {
   if (!entry.modProvider) return true;
   return typeof window !== 'undefined' && typeof window.__mrModsHas === 'function' && window.__mrModsHas(entry.mode);
 });
-// 咪咕 / Radio Paradise / Internet Archive 还没搬进包里（见 README 的已搬/待搬），
-// 先不放点了没反应的标签出来骗人。
+// 咪咕还没搬进包里（要处理会话，见 README 的已搬/待搬），先不放点了没反应的标签出来骗人。
 
 // 浮窗这一侧的"已经取回哪些歌、翻到哪儿了"。翻页游标留在这里而不是浮窗里，
 // 理由与本文件开头那条一样：两边各实现一遍搜索，行为迟早分叉。
@@ -215,6 +216,17 @@ function quickSearchHostItem(song) {
   var item = Object.assign({}, song);
   var sec = quickSearchHostDurationSec(song);
   if (sec) item.qsDurationSec = sec;
+  var providerKey = quickSearchHostProviderKey(song);
+  // 免登录的两个外挂源都"不像一首歌"，明说一句比让用户点了才发现强：
+  // RP 是连续直播（拖不了进度、没有单曲），IA 一行是 archive.org 的一个**条目**
+  // （往往是一整张专辑/一场演出），实际播哪个文件由后端按音质档从条目里挑。
+  if (typeof window.__mrModsIsLive === 'function' && window.__mrModsIsLive(providerKey)) {
+    item.qsBadge = '直播';
+    item.qsBadgeTitle = '电台直播流：没有单曲、没有可拖的进度条，也没有同步歌词';
+  } else if (providerKey === 'internetarchive') {
+    item.qsBadge = '条目';
+    item.qsBadgeTitle = 'archive.org 的一个条目（常见为一整张专辑或一场演出）· 播放时后端按音质档从条目里挑一个浏览器能解码的文件';
+  }
   if (typeof searchBiliVersionBits === 'function') {
     // 分区名 / "合集/串烧，非单曲" / 非原唱版本 —— 与主界面结果行同一套话，两边不各说各的
     var bits = searchBiliVersionBits(song) || [];
