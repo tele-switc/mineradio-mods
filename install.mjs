@@ -262,7 +262,13 @@ async function main() {
   Object.assign(target2, t);
   const states = readState(target2, manifest);
   const { bad } = report(target2, states, manifest, mods);
-  if (values.verify || values.status) { process.exitCode = bad.length ? 1 : 0; return; }
+  if (values.verify || values.status) {
+    // verify 的语义是"现在这个状态能不能用"：锚点被更新冲掉就是不能用，
+    // 只报 drift 不算失败是错的（第一次实演就在这里漏了红）
+    const todo = states.filter((s) => ['todo','stale'].includes(s.state));
+    if (values.verify && todo.length) say('✖ 有 ' + todo.length + ' 项没到位（多半是软件更新把上游文件换掉了），跑 node install.mjs --go 补回');
+    process.exitCode = (bad.length || (values.verify && todo.length)) ? 1 : 0; return;
+  }
   if (values.uninstall) { uninstall(target2, manifest, values); return; }
   if (bad.length) { process.exitCode = 1; return; }
   apply(target2, states, manifest, { ...values, mods });
