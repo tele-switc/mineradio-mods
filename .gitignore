@@ -1,0 +1,8 @@
+# 上游原版夹具：从开发仓库 git archive 出来的，不入库（体积大且是别人的源码快照）
+.fixture/
+.live/
+
+# 装过之后的产物
+mods-backup/
+node_modules/
+*.log

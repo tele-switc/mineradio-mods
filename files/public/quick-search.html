@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Mineradio Quick Search</title>
+  <style>
+    /* 这个浮窗是独立窗口，不加载 index.css，所以设计 token 在这里重述一份，
+       值与 public/css/index.css 的 :root 保持一致（改那边记得改这里）。
+       平台标签那一排刻意照抄 .search-mode-tabs 的尺寸与那层薄荷绿高亮，
+       要的就是"把软件里那个搜索框搬到浮窗上"的观感。 */
+    :root {
+      --font-sans: "Noto Sans SC", "PingFang SC", "HarmonyOS Sans SC", "Alibaba PuHuiTi", "Inter", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      --font-mono: "JetBrains Mono", "Geist Mono", "SF Mono", ui-monospace, monospace;
+      --fc-accent-rgb: 255, 255, 255;
+      --champagne: #f4d28a;
+      --home-accent: #00f5d4;
+      --glass-bg: linear-gradient(112deg, rgba(72, 74, 76, .62), rgba(24, 27, 30, .70) 48%, rgba(8, 12, 14, .74));
+      --glass-border-soft: rgba(255, 255, 255, .095);
+      --source-netease: #d95b67;
+      --source-qq: #00F5D4;
+      --source-qishui: #45d68f;
+      --source-spotify: #1ed760;
+      --source-local: #9db8cf;
+    }
+
+    * {
+      box-sizing: border-box
+    }
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background: transparent;
+      overflow: hidden;
+      font-family: var(--font-sans);
+      -webkit-user-select: none;
+      user-select: none
+    }
+
+    body {
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      /* 这个窗口是透明的，卡片外面这圈留白就是阴影唯一能扩散的地方。
+         主窗口弹层那套 0 22px 64px 的大阴影放进来会被窗口边界硬切成直角灰边，
+         所以阴影尺寸、这里的 padding、以及 desktop/main.js 里的 QUICK_SEARCH_SIZE
+         三者是配对的（单测与 e2e 都会断言这个关系）。 */
+      padding: 14px 16px 26px
+    }
+
+    .qs-card {
+      width: 100%;
+      max-width: 470px;
+      border-radius: 18px;
+      border: 1px solid var(--glass-border-soft);
+      background: var(--glass-bg), linear-gradient(180deg, rgba(18, 19, 22, .95), rgba(9, 10, 12, .94));
+      backdrop-filter: blur(46px) saturate(1.36);
+      -webkit-backdrop-filter: blur(46px) saturate(1.36);
+      box-shadow: 0 12px 22px rgba(0, 0, 0, .34), 0 2px 6px rgba(0, 0, 0, .26), inset 0 1px 0 rgba(255, 255, 255, .14);
+      overflow: hidden;
+      color: rgba(255, 255, 255, .88)
+    }
+
+    .qs-head {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 13px 15px;
+      border-bottom: 1px solid rgba(255, 255, 255, .07)
+    }
+
+    .qs-head svg {
+      flex: none;
+      color: rgba(255, 255, 255, .42)
+    }
+
+    #qs-input {
+      flex: 1;
+      min-width: 0;
+      border: none;
+      background: none;
+      outline: none;
+      color: #fff;
+      font-family: inherit;
+      font-size: 14.5px;
+      letter-spacing: .3px
+    }
+
+    #qs-input::placeholder {
+      color: rgba(255, 255, 255, .24)
+    }
+
+    .qs-hint {
+      flex: none;
+      font-family: var(--font-mono);
+      font-size: 9.5px;
+      letter-spacing: .12em;
+      color: rgba(255, 255, 255, .28);
+      white-space: nowrap
+    }
+
+    /* ---- 平台标签：照 .search-mode-tabs 的尺寸与配色 ---- */
+    .qs-tabs-wrap {
+      display: flex;
+      justify-content: center;
+      padding: 10px 12px 0
+    }
+
+    .qs-tabs {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      width: max-content;
+      max-width: 100%;
+      padding: 3px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, .045);
+      border: 1px solid rgba(var(--fc-accent-rgb), .12);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      overflow-x: auto;
+      scrollbar-width: none
+    }
+
+    .qs-tabs::-webkit-scrollbar {
+      display: none
+    }
+
+    /* 主界面那排是 0 12px / 10.5px，因为它的容器有整条搜索栏那么宽。
+       这里卡片只有 470px，十档全摆进去要收一点字号与内边距，
+       否则最后一档 Podcast 会被裁成 Podca（e2e 有断言：不许截断）。 */
+    .qs-tabs button {
+      flex: none;
+      height: 24px;
+      padding: 0 9px;
+      border: 0;
+      border-radius: 999px;
+      background: transparent;
+      color: rgba(255, 255, 255, .42);
+      font-family: inherit;
+      font-size: 10px;
+      font-weight: 650;
+      letter-spacing: .5px;
+      cursor: pointer;
+      transition: background .22s, color .22s, box-shadow .22s
+    }
+
+    .qs-tabs button:hover {
+      color: rgba(255, 255, 255, .78)
+    }
+
+    .qs-tabs button.active {
+      color: #eafffb;
+      background: rgba(0, 245, 212, .11);
+      box-shadow: inset 0 0 0 1px rgba(0, 245, 212, .22), 0 8px 24px rgba(0, 245, 212, .055)
+    }
+
+    /* 未登录/暂时不能搜的标签：跟主界面一样仍可点，只是标灰 + 说明写在 title 里 */
+    .qs-tabs button.dim {
+      color: rgba(255, 255, 255, .24)
+    }
+
+    .qs-tabs button.dim::after {
+      content: '';
+      display: inline-block;
+      width: 4px;
+      height: 4px;
+      margin-left: 5px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, .22);
+      vertical-align: middle
+    }
+
+    /* 播客下钻时的返回条：做成列表里的第一行，而不是列表外的一根条 ——
+       列表外多一根条就要多一截窗口高度，而窗口尺寸是建窗时定死的，
+       放进滚动区里则完全不改变卡片总高。 */
+    .qs-back {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      margin: 2px 0 4px;
+      padding: 7px 10px;
+      border: 1px dashed rgba(255, 255, 255, .12);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, .03);
+      color: rgba(255, 255, 255, .56);
+      font-family: inherit;
+      font-size: 11px;
+      text-align: left;
+      cursor: pointer
+    }
+
+    .qs-back:hover {
+      background: rgba(255, 255, 255, .06);
+      color: rgba(255, 255, 255, .78)
+    }
+
+    .qs-back b {
+      font-weight: 500;
+      color: rgba(244, 210, 138, .82);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap
+    }
+
+    .qs-back small {
+      margin-left: auto;
+      flex: none;
+      font-family: var(--font-mono);
+      font-size: 9.5px;
+      letter-spacing: .1em;
+      color: rgba(255, 255, 255, .28)
+    }
+
+    .qs-list {
+      max-height: 300px;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      padding: 6px
+    }
+
+    .qs-list::-webkit-scrollbar {
+      width: 3px
+    }
+
+    .qs-list::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, .1);
+      border-radius: 2px
+    }
+
+    .qs-row {
+      display: grid;
+      grid-template-columns: 22px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      padding: 8px 9px;
+      border: 1px solid transparent;
+      border-radius: 12px;
+      background: none;
+      color: inherit;
+      font-family: inherit;
+      text-align: left;
+      cursor: pointer
+    }
+
+    .qs-row:hover {
+      background: rgba(255, 255, 255, .05)
+    }
+
+    .qs-row.active {
+      background: rgba(var(--fc-accent-rgb), .09);
+      border-color: rgba(244, 210, 138, .28)
+    }
+
+    .qs-row-num {
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      color: rgba(255, 255, 255, .3);
+      text-align: right
+    }
+
+    .qs-row.active .qs-row-num {
+      color: var(--champagne)
+    }
+
+    .qs-row-main {
+      min-width: 0
+    }
+
+    .qs-row-name {
+      display: block;
+      font-size: 13px;
+      color: rgba(255, 255, 255, .93);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis
+    }
+
+    .qs-row-artist {
+      display: block;
+      margin-top: 2px;
+      font-size: 11px;
+      color: rgba(255, 255, 255, .44);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis
+    }
+
+    .qs-row-side {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      flex: none
+    }
+
+    .qs-src {
+      padding: 2px 7px;
+      border-radius: 999px;
+      font-size: 9.5px;
+      letter-spacing: .08em;
+      color: rgba(255, 255, 255, .62);
+      border: 1px solid rgba(255, 255, 255, .1);
+      background: rgba(255, 255, 255, .04)
+    }
+
+    .qs-src[data-src="netease"] { color: var(--source-netease); border-color: rgba(217, 91, 103, .3) }
+    .qs-src[data-src="qq"] { color: var(--source-qq); border-color: rgba(0, 245, 212, .28) }
+    .qs-src[data-src="kugou"] { color: #8fe9ff; border-color: rgba(143, 233, 255, .26) }
+    .qs-src[data-src="qishui"] { color: var(--source-qishui); border-color: rgba(69, 214, 143, .28) }
+    .qs-src[data-src="migu"] { color: #ffd9a0; border-color: rgba(255, 217, 160, .26) }
+    .qs-src[data-src="bilibili"] { color: #ff9fb2; border-color: rgba(255, 159, 178, .26) }
+    .qs-src[data-src="internetarchive"] { color: var(--source-local); border-color: rgba(157, 184, 207, .26) }
+    .qs-src[data-src="radioparadise"] { color: var(--home-accent); border-color: rgba(0, 245, 212, .26) }
+    .qs-src[data-src="podcast"] { color: #c9b6ff; border-color: rgba(201, 182, 255, .28) }
+
+    .qs-dur {
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      color: rgba(255, 255, 255, .34);
+      font-variant-numeric: tabular-nums
+    }
+
+    /* ---- B 站合集：徽章 + 分段行 + 整包入队 + 查看更多 ----
+       配色守的是"淡色块 + 细描边"那套（5% 上下的底、1px 边），
+       不做饱和填充：这一排本来就是在软件搜索框旁边多出来的信息。 */
+    .qs-badge {
+      flex: none;
+      padding: 2px 6px;
+      border-radius: 999px;
+      font-size: 9.5px;
+      letter-spacing: .04em;
+      white-space: nowrap;
+      color: rgba(244, 210, 138, .8);
+      border: 1px solid rgba(244, 210, 138, .22);
+      background: rgba(244, 210, 138, .055)
+    }
+
+    .qs-badge.weak {
+      color: rgba(255, 255, 255, .38);
+      border-color: rgba(255, 255, 255, .1);
+      background: rgba(255, 255, 255, .03)
+    }
+
+    /* "直接播整条"那颗：做成 span 而不是 button —— .qs-row 自己已经是 <button>，
+       按钮里套按钮是非法 HTML，点子节点还会被行的委托当成"展开分段"。 */
+    .qs-row-play {
+      flex: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 19px;
+      height: 19px;
+      border-radius: 50%;
+      border: 1px solid rgba(255, 255, 255, .12);
+      background: rgba(255, 255, 255, .04);
+      color: rgba(255, 255, 255, .5);
+      font-size: 8.5px;
+      line-height: 1;
+      cursor: pointer
+    }
+
+    .qs-row-play:hover {
+      color: #eafffb;
+      border-color: rgba(0, 245, 212, .24);
+      background: rgba(0, 245, 212, .07)
+    }
+
+    .qs-row.is-collection-head {
+      border-color: rgba(244, 210, 138, .2);
+      background: rgba(244, 210, 138, .05)
+    }
+
+    .qs-row.is-part {
+      border-left: 2px solid rgba(255, 255, 255, .07)
+    }
+
+    .qs-note {
+      padding: 7px 10px 2px;
+      font-size: 10.5px;
+      line-height: 1.5;
+      text-align: center;
+      color: rgba(255, 255, 255, .34)
+    }
+
+    .qs-more {
+      display: block;
+      width: 100%;
+      margin-top: 5px;
+      padding: 8px 10px;
+      border: 1px dashed rgba(255, 255, 255, .12);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, .025);
+      color: rgba(255, 255, 255, .5);
+      font-family: inherit;
+      font-size: 11px;
+      letter-spacing: .04em;
+      text-align: center;
+      cursor: pointer
+    }
+
+    .qs-more:hover {
+      color: rgba(255, 255, 255, .76);
+      background: rgba(255, 255, 255, .055)
+    }
+
+    .qs-foot .qs-keys {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap
+    }
+
+    .qs-state {
+      padding: 22px 16px;
+      text-align: center;
+      font-size: 12px;
+      line-height: 1.7;
+      letter-spacing: .3px;
+      color: rgba(255, 255, 255, .4)
+    }
+
+    .qs-foot {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 9px 14px;
+      border-top: 1px solid rgba(255, 255, 255, .06);
+      font-size: 10.5px;
+      letter-spacing: .06em;
+      color: rgba(255, 255, 255, .3)
+    }
+
+    .qs-foot b {
+      font-weight: 500;
+      color: rgba(255, 255, 255, .52)
+    }
+
+    .qs-now {
+      max-width: 190px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: rgba(244, 210, 138, .72)
+    }
+  </style>
+</head>
+
+<body>
+  <div class="qs-card">
+    <div class="qs-head">
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="11" cy="11" r="8" />
+        <path d="m21 21-4.35-4.35" />
+      </svg>
+      <input id="qs-input" type="text" placeholder="搜歌名或歌手，回车直接播" autocomplete="off" spellcheck="false">
+      <span class="qs-hint">CTRL+SPACE</span>
+    </div>
+    <div class="qs-tabs-wrap">
+      <div id="qs-tabs" class="qs-tabs" role="tablist" aria-label="搜索平台"></div>
+    </div>
+    <div id="qs-list" class="qs-list">
+      <div class="qs-state" id="qs-state">输入关键词开始搜索</div>
+    </div>
+    <div class="qs-foot">
+      <span class="qs-keys" title="Tab 换平台 · ↑↓ 选择 · Enter 播放（B 站合集行是展开分段）· Shift+Enter 直接播整条 · End 或滚到底加载更多 · Esc 返回上一层 / 收起"><b>Tab</b> 换平台 · <b>↑↓</b> 选 · <b>↵</b> 播 · <b>⇧↵</b> 整条 · <b>End</b> 更多 · <b>Esc</b> 返回</span>
+      <span class="qs-now" id="qs-now"></span>
+    </div>
+  </div>
+
+  <script>
+    (function quickSearchOverlay() {
+      'use strict';
+      var api = window.desktopOverlay || null;
+      var input = document.getElementById('qs-input');
+      var list = document.getElementById('qs-list');
+      var tabsBox = document.getElementById('qs-tabs');
+      var now = document.getElementById('qs-now');
+
+      // 兜底标签：主窗口还没回 hello 之前也能用（顺序与文案对齐 index.html 那排）
+      var TABS = [
+        { mode: 'song', label: 'All', title: '全部音乐源（合并搜索）' },
+        { mode: 'netease', label: 'NE', title: '网易云音乐' },
+        { mode: 'qq', label: 'QQ', title: 'QQ 音乐' },
+        { mode: 'kugou', label: 'KG', title: '酷狗音乐' },
+        { mode: 'qishui', label: 'QS', title: '汽水音乐' },
+        { mode: 'bilibili', label: 'BL', title: 'B 站' },
+        { mode: 'migu', label: 'MG', title: '咪咕音乐' },
+        { mode: 'radioparadise', label: 'RP', title: 'Radio Paradise 直播电台（免登录 320k AAC）' },
+        { mode: 'internetarchive', label: 'IA', title: 'Internet Archive 公开音频（免登录）' },
+        { mode: 'podcast', label: 'Podcast', title: '播客' }
+      ];
+      var mode = 'song';
+      var items = [];
+      var active = -1;
+      var requestId = 0;
+      var queryTimer = null;
+      var pending = '';
+      // 两层下钻都存这里：播客（搜到播客 → 点开才是单集）与 B 站合集（一条结果可能是
+      // 一整个播放列表 → 点开才是分 P）。带上上一层的结果与分页状态，Esc 回去不用重搜。
+      var drill = null;
+      // 用户在这次开窗里自己点过平台档没有：点过了，开窗问候回带的"上次用的档"就不能再把他切走
+      var modePicked = false;
+      // 「查看更多」：初屏 24 条，剩下的由主窗口那份池子往前翻（本地已有的先给完）
+      var hasMore = false;
+      var shownCount = 0;
+      var totalCount = 0;
+      var moreNote = '';
+      var loadingMore = false;
+      var moreError = '';
+
+      function esc(value) {
+        var d = document.createElement('div');
+        d.textContent = value == null ? '' : String(value);
+        return d.innerHTML;
+      }
+
+      function state(text) {
+        items = [];
+        active = -1;
+        list.innerHTML = '<div class="qs-state">' + esc(text) + '</div>';
+      }
+
+      function durationOf(song) {
+        // 宿主给了明确秒数的（B 站、播客单集都用秒）优先用它：
+        // 原来一律"大于 1000 就当毫秒除一遍"，20 分钟的分段会被显示成 0:1。
+        var explicit = Number(song && song.qsDurationSec || 0);
+        if (explicit > 0) return Math.floor(explicit / 60) + ':' + String(Math.round(explicit % 60)).padStart(2, '0');
+        var ms = Number(song.duration || song.durationMs || song.dt || 0);
+        var sec = ms > 1000 ? Math.round(ms / 1000) : Math.round(ms);
+        if (!isFinite(sec) || sec <= 0) return '';
+        return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
+      }
+
+      function sourceOf(song) {
+        if (song && song.qsKind === 'podcast-radio') return 'podcast';
+        if (mode === 'podcast') return 'podcast';
+        return String((song && (song.provider || song.source || song.type)) || 'song');
+      }
+
+      function sourceLabel(key) {
+        return {
+          netease: '网易云', qq: 'QQ', kugou: '酷狗', qishui: '汽水', migu: '咪咕',
+          bilibili: 'B 站', internetarchive: 'Archive', radioparadise: 'RP',
+          spotify: 'Spotify', podcast: '播客'
+        }[key] || key;
+      }
+
+      function renderTabs() {
+        tabsBox.innerHTML = TABS.map(function (tab) {
+          var cls = 'qs-tab' + (tab.mode === mode ? ' active' : '') + (tab.available === false ? ' dim' : '');
+          var tip = tab.title || tab.label;
+          if (tab.loggedIn === false) tip += ' · 未登录，可能搜不到或只能听免费档';
+          return '<button class="' + cls + '" type="button" role="tab" data-qs-mode="' + esc(tab.mode)
+            + '" aria-selected="' + (tab.mode === mode ? 'true' : 'false') + '" title="' + esc(tip) + '">'
+            + esc(tab.label) + '</button>';
+        }).join('');
+      }
+
+      function setMode(next) {
+        var found = null;
+        for (var i = 0; i < TABS.length; i++) if (TABS[i].mode === next) found = TABS[i];
+        if (!found) return;
+        mode = found.mode;
+        modePicked = true;
+        drill = null;
+        resetPaging({});
+        renderTabs();
+        // 落盘交给主窗口（软件那份 localStorage 才是真相，浮窗一关就没了）
+        if (api && typeof api.quickSearchCommand === 'function') api.quickSearchCommand({ action: 'setMode', mode: mode });
+        if (String(input.value || '').trim()) runQuery(String(input.value).trim());
+      }
+
+      function rowSub(song, isRadio) {
+        if (isRadio) return '点开看单集';
+        var parts = [];
+        var artist = song.artist || song.dj || song.desc || song.description || '';
+        if (artist) parts.push(artist);
+        // 宿主把主界面那套版本标注一起送过来了（分区名 / 合集·串烧 / 非原唱），
+        // 浮窗只画它，不在这里另立一套判据
+        if (song.qsMeta) parts.push(song.qsMeta);
+        return parts.join('  ·  ') || '未知歌手';
+      }
+
+      function rowHtml(song, i) {
+        var src = sourceOf(song);
+        var isRadio = song && song.qsKind === 'podcast-radio';
+        var isCollection = song && song.qsKind === 'bili-collection';
+        var isPart = song && (song.qsKind === 'bili-part' || song.qsKind === 'bili-collection-all');
+        var isPack = song && song.qsKind === 'bili-collection-all';
+        var num = isPack ? '▶' : (song.qsPartIndex ? ('P' + song.qsPartIndex) : String(i + 1));
+        var badge = song.qsBadge
+          ? '<span class="qs-badge' + (song.qsBadgeWeak ? ' weak' : '') + '" title="'
+            + esc(isCollection ? (song.qsBadgeWeak ? '点一下看有没有分段（只有 B 站详情接口知道真实段数）' : '这是一整个合集：点开看分段，可单独播其中一首或整包入队') : '') + '">'
+            + esc(song.qsBadge) + '</span>'
+          : '';
+        var play = isCollection
+          ? '<span class="qs-row-play" role="button" tabindex="-1" data-qs-play-row="' + i
+            + '" title="直接播这一条，不展开分段">▶</span>'
+          : '';
+        return '<button class="qs-row' + (i === active ? ' active' : '')
+          + (isPack ? ' is-collection-head' : (isPart ? ' is-part' : ''))
+          + '" type="button" data-qs-index="' + i + '">'
+          + '<span class="qs-row-num">' + esc(num) + '</span>'
+          + '<span class="qs-row-main">'
+          + '<span class="qs-row-name">' + esc(song.name || song.title || song.programName || '未命名') + '</span>'
+          + '<span class="qs-row-artist">' + esc(rowSub(song, isRadio)) + '</span>'
+          + '</span>'
+          + '<span class="qs-row-side">'
+          + badge
+          + play
+          + '<span class="qs-src" data-src="' + esc(src) + '">' + esc(sourceLabel(src)) + '</span>'
+          + '<span class="qs-dur">' + esc(isRadio ? '' : durationOf(song)) + '</span>'
+          + '</span></button>';
+      }
+
+      function moreRowHtml() {
+        if (drill || !hasMore) return '';
+        if (loadingMore) return '<button class="qs-more" type="button" disabled>正在加载更多…</button>';
+        if (moreError) return '<button class="qs-more" type="button" data-qs-more="1">' + esc(moreError) + '（点此再试）</button>';
+        var shown = shownCount || items.length;
+        // 各源一页只回这么多条，"已显示 12 / 12"会被读成"就这些了"：
+        // 只有真知道总数比已显示多时才写分母
+        var counter = (totalCount > shown) ? (' · 已显示 ' + shown + ' / ' + totalCount) : (' · 已显示 ' + shown + ' 条');
+        return '<button class="qs-more" type="button" data-qs-more="1">查看更多' + counter + '（按 End 或滚到底）</button>';
+      }
+
+      function render(opts) {
+        opts = opts || {};
+        // 「加载更多」要保持滚动位置：重画整张列表会把视口弹回高亮那一行，
+        // 用户刚滚到底想看新的，结果被拽回顶部，看起来像是没加载出来。
+        var keepTop = opts.keepScroll ? list.scrollTop : -1;
+        if (!items.length) {
+          state(drill ? (drill.emptyText || '这一层暂时没有可播的内容') : '没搜到相关的歌');
+          return;
+        }
+        // 下钻时返回条做成列表第一行（跟着滚，不额外占窗口高度）
+        var head = drill
+          ? '<button class="qs-back" type="button" data-qs-back="1"><span>‹</span><b>' + esc(drill.name)
+            + '</b><small>' + esc(drill.count > 1 ? (drill.count + ' 段 · Esc 返回') : 'Esc 返回') + '</small></button>'
+          : '';
+        list.innerHTML = head + items.map(rowHtml).join('')
+          + (moreNote ? ('<div class="qs-note">' + esc(moreNote) + '</div>') : '')
+          + moreRowHtml();
+        if (keepTop >= 0) { list.scrollTop = keepTop; return; }
+        if (active >= 0) {
+          var node = list.querySelector('[data-qs-index="' + active + '"]');
+          if (node && node.scrollIntoView) node.scrollIntoView({ block: 'nearest' });
+        }
+      }
+
+      function hide() {
+        if (api && typeof api.quickSearchClose === 'function') api.quickSearchClose();
+        else window.close();
+      }
+
+      // opts.keep = true 时不清列表（「查看更多」是在现有结果下面往前翻，
+      // 把列表 wipe 成"搜索中…"会让用户眼前一空，还会丢掉滚动位置）
+      function sendQuery(body, opts) {
+        opts = opts || {};
+        requestId += 1;
+        var mine = requestId;
+        if (opts.keep) {
+          loadingMore = true;
+          moreError = '';
+          render({ keepScroll: true });
+        } else {
+          state(opts.busy || '搜索中…');
+        }
+        if (!api || typeof api.quickSearchQuery !== 'function') {
+          loadingMore = false;
+          state('这个窗口没接上 Mineradio 主进程');
+          return;
+        }
+        api.quickSearchQuery(Object.assign({ requestId: mine, mode: mode }, body || {}));
+        // 超时兜底：合并搜索是等所有源 settle，慢源（B 站 WBI、Internet Archive）
+        // 整轮能到十几秒，给 20 秒；再短就会把"还在搜"误报成"主窗口没回应"。
+        setTimeout(function () {
+          if (requestId !== mine) return;
+          if (loadingMore) {
+            loadingMore = false;
+            moreError = '加载更多超时';
+            render();
+            return;
+          }
+          if (list.querySelector('.qs-state')) state('主窗口没有回应（可能正在启动），稍后再试');
+        }, 20000);
+      }
+
+      function runQuery(text) { sendQuery({ query: text }); }
+
+      function resetPaging(data) {
+        hasMore = !!(data && data.hasMore);
+        shownCount = Number((data && data.shown) || 0);
+        totalCount = Number((data && data.total) || 0);
+        moreNote = String((data && data.moreNote) || '');
+        loadingMore = false;
+        moreError = '';
+      }
+
+      function openRadio(radio) {
+        var id = String((radio && (radio.id || radio.programId || radio.radioId)) || '');
+        if (!id) return;
+        drill = { items: items, name: radio.name || radio.title || '', kind: 'podcast', hasMore: hasMore, moreNote: moreNote };
+        resetPaging({});
+        sendQuery({ action: 'podcastPrograms', radioId: id }, { busy: '正在读取单集…' });
+      }
+
+      // B 站合集行：回车先把分 P 列表展开（段数只有 view 接口知道，点开才取）
+      function openCollection(song) {
+        var bvid = String((song && (song.bvid || song.id)) || '');
+        if (!bvid) return;
+        drill = {
+          items: items, name: song.name || '', kind: 'bili', bvid: bvid,
+          hasMore: hasMore, moreNote: moreNote,
+          song: song,
+        };
+        resetPaging({});
+        sendQuery({ action: 'biliParts', bvid: bvid }, { busy: '正在读取分段…' });
+      }
+
+      function backFromDrill() {
+        if (!drill) return false;
+        // 放弃那一层：requestId 进一位，慢回来的单集/分段结果不能再盖掉退回后的列表
+        //（实测踩过：Esc 之后那次下钻的回包才到，浮窗又变回下钻态，看起来像 Esc 没生效）
+        requestId += 1;
+        if (queryTimer) { clearTimeout(queryTimer); queryTimer = null; }
+        pending = String(input.value || '').trim();
+        items = drill.items;
+        active = 0;
+        hasMore = !!drill.hasMore;
+        moreNote = drill.moreNote || '';
+        drill = null;
+        render();
+        return true;
+      }
+
+      function onInput() {
+        var text = String(input.value || '').trim();
+        if (pending === text) return;
+        pending = text;
+        if (queryTimer) clearTimeout(queryTimer);
+        if (drill) drill = null;
+        if (!text) { resetPaging({}); state('输入关键词开始搜索'); return; }
+        // 320ms 防抖：一边打字一边打各平台接口会被限流，也会让列表乱跳
+        queryTimer = setTimeout(function () { runQuery(text); }, 320);
+      }
+
+      function setActive(next) {
+        if (!items.length) return;
+        active = Math.max(0, Math.min(items.length - 1, next));
+        render();
+      }
+
+      function playSong(song) {
+        if (!api || typeof api.quickSearchPlay !== 'function') return;
+        api.quickSearchPlay(song);
+        // 「整包入队」那一行本身不是歌，底栏那句"正在播"要说的是整张合集，不是"整包入队 · 共 184 段"
+        var label = song.qsKind === 'bili-collection-all'
+          ? ('整张合集 · ' + (song.biliCollectionTitle || song.name || ''))
+          : (song.name || song.title || '');
+        now.textContent = '正在播：' + label;
+      }
+
+      function choose(index) {
+        var song = items[index];
+        if (!song) return;
+        if (song.qsKind === 'podcast-radio') { openRadio(song); return; }
+        if (song.qsKind === 'bili-collection') { openCollection(song); return; }
+        // 交给主窗口去起播：音频元素活在主窗口的渲染进程里，浮窗自己不放声
+        playSong(song);
+        hide();
+      }
+
+      // 「播整条」：合集行右侧那颗 ▶（或 Shift+Enter），不展开分段直接播
+      function playWholeRow(index) {
+        var song = items[index];
+        if (!song || song.qsKind !== 'bili-collection') return;
+        playSong(song);
+        hide();
+      }
+
+      function loadMore() {
+        if (drill || loadingMore || !hasMore) return;
+        sendQuery({ action: 'more' }, { keep: true });
+      }
+
+      function cycleTab(step) {
+        var idx = 0;
+        for (var i = 0; i < TABS.length; i++) if (TABS[i].mode === mode) idx = i;
+        setMode(TABS[(idx + step + TABS.length) % TABS.length].mode);
+      }
+
+      input.addEventListener('input', onInput);
+      input.addEventListener('keydown', function (e) {
+        if (e.key === 'ArrowDown') { e.preventDefault(); setActive(active + 1); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(active - 1); }
+        else if (e.key === 'Enter') {
+          e.preventDefault();
+          // Shift+Enter：合集行不展开、直接播整条（下钻是默认行为，这条是它的反面）
+          if (e.shiftKey && active >= 0) { playWholeRow(active); }
+          else if (active >= 0) { choose(active); }
+          else if (items.length) { choose(0); }
+        }
+        else if (e.key === 'Tab') { e.preventDefault(); cycleTab(e.shiftKey ? -1 : 1); }
+        else if (e.key === 'End' || e.key === 'PageDown') { e.preventDefault(); loadMore(); }
+        else if (e.key === 'Backspace' && !input.value && backFromDrill()) { e.preventDefault(); }
+        else if (e.key === 'Escape') {
+          e.preventDefault();
+          if (!backFromDrill()) hide();
+        }
+      });
+      tabsBox.addEventListener('click', function (e) {
+        var btn = e.target && e.target.closest ? e.target.closest('[data-qs-mode]') : null;
+        if (!btn) return;
+        e.preventDefault();
+        setMode(String(btn.getAttribute('data-qs-mode')));
+        try { input.focus(); } catch (err) { }
+      });
+      list.addEventListener('click', function (e) {
+        var back = e.target && e.target.closest ? e.target.closest('[data-qs-back]') : null;
+        if (back) { e.preventDefault(); backFromDrill(); return; }
+        // ▶ 那颗在行按钮里面，必须先于整行的委托判掉（按钮不能套按钮，所以它是 span）
+        var play = e.target && e.target.closest ? e.target.closest('[data-qs-play-row]') : null;
+        if (play) { e.preventDefault(); e.stopPropagation(); playWholeRow(Number(play.getAttribute('data-qs-play-row'))); return; }
+        var more = e.target && e.target.closest ? e.target.closest('[data-qs-more]') : null;
+        if (more) { e.preventDefault(); loadMore(); return; }
+        var row = e.target && e.target.closest ? e.target.closest('[data-qs-index]') : null;
+        if (!row) return;
+        choose(Number(row.getAttribute('data-qs-index')));
+      });
+      // 滚到底自动往前翻（浮窗只有一个输入框，多一个"加载更多"按钮已经够挤了）
+      list.addEventListener('scroll', function () {
+        if (drill || loadingMore || !hasMore) return;
+        if (list.scrollTop + list.clientHeight >= list.scrollHeight - 48) loadMore();
+      });
+
+      if (api && typeof api.onQuickSearchResults === 'function') {
+        api.onQuickSearchResults(function (payload) {
+          var data = payload || {};
+          // 开窗问候：把"上次用的平台 + 每个平台现在能不能搜"送过来（requestId 是 0）
+          if (data.hello) {
+            if (Array.isArray(data.tabs) && data.tabs.length) TABS = data.tabs;
+            if (data.mode && !modePicked) { mode = String(data.mode); renderTabs(); }
+            return;
+          }
+          // 只收当下这次请求的结果，早先那次慢回来的直接丢
+          if (data.requestId && data.requestId !== requestId) return;
+          if (Array.isArray(data.tabs) && data.tabs.length) { TABS = data.tabs; renderTabs(); }
+          if (data.error) { resetPaging({}); state(String(data.error)); return; }
+          // 合集其实只有一段：别装作有个列表可展开，把这条本身画回列表当唯一一行，
+          // Enter 就是播整条，Esc 退回搜索结果
+          if (data.action === 'biliParts' && (data.single || !Array.isArray(data.items) || !data.items.length)) {
+            if (data.single && drill && drill.song) {
+              var singleSong = Object.assign({}, drill.song, { qsKind: '', qsBadge: '单段', qsBadgeWeak: true });
+              drill.count = 1;
+              items = [singleSong];
+              active = 0;
+              render();
+              return;
+            }
+            resetPaging(data);
+            state('这条 B 站结果没有可展开的分段');
+            return;
+          }
+          if (data.action === 'biliParts' && drill) {
+            drill.count = Number(data.partCount) || Math.max(0, data.items.length - 1);
+            drill.name = data.name || drill.name;
+          }
+          resetPaging(data);
+          items = Array.isArray(data.items) ? data.items : [];
+          // 「查看更多」是往后追加：保持高亮在原位，别把用户刚选的那首跳到第一行
+          if (data.action === 'more') {
+            active = items.length ? Math.min(Math.max(active, 0), items.length - 1) : -1;
+          } else if (data.action === 'biliParts') {
+            // 下钻后高亮落在第一段，而不是顶上那行「整包入队」：
+            // 用户点开合集多半是要"就播这一首"，整包入队是他往上够一格的事
+            active = (items.length && items[0].qsKind === 'bili-collection-all') ? Math.min(1, items.length - 1) : 0;
+          } else {
+            active = items.length ? 0 : -1;
+          }
+          render({ keepScroll: data.action === 'more' });
+        });
+      }
+      if (api && typeof api.onQuickSearchState === 'function') {
+        api.onQuickSearchState(function (payload) {
+          if (payload && payload.reset) {
+            input.value = '';
+            pending = '';
+            drill = null;
+            modePicked = false;
+            resetPaging({});
+            state('输入关键词开始搜索');
+          }
+          // 每次开窗都问一次当前状态，主窗口会把平台表与上次用的档回过来
+          if (api && typeof api.quickSearchCommand === 'function') api.quickSearchCommand({ action: 'hello' });
+          setTimeout(function () { try { input.focus(); input.select(); } catch (e) { } }, 30);
+        });
+      }
+      renderTabs();
+      setTimeout(function () { try { input.focus(); } catch (e) { } }, 60);
+      if (api && typeof api.quickSearchCommand === 'function') api.quickSearchCommand({ action: 'hello' });
+    })();
+  </script>
+</body>
+
+</html>

@@ -1,0 +1,144 @@
+{
+  "pack": "mineradio-mods",
+  "packVersion": "0.1.0",
+  "license": "GPL-3.0-only",
+  "upstream": {
+    "repo": "XxHuberrr/Mineradio",
+    "testedAgainst": ["2.2.0"],
+    "baselineCommit": "d43de56",
+    "note": "上游 build.asar:false —— 安装目录里 resources/app 是普通目录，所以外挂可以按文件投放"
+  },
+  "marker": "mineradio-mods",
+  "anchors": [
+    {
+      "id": "renderer-modules",
+      "title": "渲染层外挂装载入口（1 行；以后再加外挂不用再动上游文件）",
+      "file": "public/js/index-loader.js",
+      "mode": "array-append",
+      "arrayLocator": "const modulePaths = [",
+      "block": ["'js/mods/loader.js',"],
+      "blockNote": "追加到 modulePaths 末尾 = 在所有上游模块之后执行，于是能包装应用自己的全局函数"
+    },
+    {
+      "id": "main-process",
+      "title": "主进程外挂宿主（1 行 require；外挂窗口与 IPC 都在宿主文件里）",
+      "file": "desktop/main.js",
+      "mode": "append",
+      "block": [
+        "try { require('./mods-host.js'); } catch (e) { console.warn('[mods] 主进程外挂未装载：' + ((e && e.message) || e)); }"
+      ]
+    },
+    {
+      "id": "server-routes",
+      "title": "后端外挂路由（1 行，在 if (pn === ...) 链之前先接管）",
+      "file": "server.js",
+      "mode": "insert-after",
+      "locator": "^\\s*const pn = url\\.pathname;$",
+      "block": [
+        "try { if (require('./mods/server-api.js').tryHandle(req, res, url, pn)) return; } catch (e) { console.warn('[mods] 后端外挂异常：' + ((e && e.message) || e)); }"
+      ]
+    },
+    {
+      "id": "server-audio-headers",
+      "title": "音频代理的 Referer（1 行；B 站/咪咕的直链缺了它就 403）",
+      "file": "server.js",
+      "mode": "insert-after",
+      "locator": "^function audioProxyHeadersFor\\(audioUrl, range\\) \\{$",
+      "block": [
+        "  try { const m = require('./mods/server-api.js').audioProxyHeaders(audioUrl); if (m) return m; } catch (e) { }"
+      ],
+      "blockNote": "上游这个函数是模块私有的、代理走的正是它；不插这一行就得自己重写一遍音频代理"
+    },
+    {
+      "id": "server-audio-type",
+      "title": "音频代理的容器类型（1 行；B 站 DASH 的 mp4a 与咪咕 FLAC 要报对 Content-Type）",
+      "file": "server.js",
+      "mode": "insert-after",
+      "locator": "^function audioContentTypeForUrl\\(audioUrl, upstreamType\\) \\{$",
+      "block": [
+        "  try { const m = require('./mods/server-api.js').audioContentType(audioUrl, upstreamType); if (m) return m; } catch (e) { }"
+      ]
+    },
+    {
+      "id": "playback-gapless-url",
+      "title": "取址·无缝专辑预取（1 行；B 站歌要能拿到自己的直链）",
+      "file": "public/js/modules/05-playback/13-playback-start-audio.js",
+      "mode": "insert-after",
+      "locator": "^  var qualityParam = '&quality=' \\+ encodeURIComponent\\(requestedQuality\\);$",
+      "block": [
+        "  try { const __m = await window.__mrModsSongUrl(song, playbackProvider, qualityParam); if (__m) return __m; } catch (e) { }"
+      ]
+    },
+    {
+      "id": "playback-url",
+      "title": "取址·主路径（1 行，放在那串 if/else 之后：外挂源命中就换掉直链）",
+      "file": "public/js/modules/05-playback/13-playback-start-audio.js",
+      "mode": "insert-before",
+      "locator": "^      if \\(data\\) \\{$",
+      "block": [
+        "      try { const __m = await window.__mrModsSongUrl(song, playbackProvider, qualityParam); if (__m && (!data || !data.url)) data = __m; } catch (e) { }"
+      ],
+      "blockNote": "上游那串 if/else 的兜底分支会拿 B 站的 bvid 去查网易云，多半回空；所以这一句只在 data 没东西时才替换，不抢上游的活"
+    },
+    {
+      "id": "preload-main",
+      "title": "主窗口预加载桥接（contextBridge 对象一旦 expose 就冻结，只能在这里加一段）",
+      "file": "desktop/preload.js",
+      "mode": "append",
+      "blockFrom": "blocks/preload-main.js"
+    }
+  ],
+  "notes": [
+    "外挂自己开的窗口（快速搜索浮窗、贴边组件）带自己的 preload 文件，所以 overlay-preload.js 不需要锚点。",
+    "两处已知缺口：托盘菜单里那三条备用入口、以及'关主窗口=收进后台'的判定（宿主自己挂 close 监听，顺序脆，见 README 的已知限制）。"
+  ],
+  "mods": [
+    {
+      "id": "quick-search",
+      "title": "Ctrl+Space 快速搜索浮窗（初屏 24 条 + 查看更多；B 站合集分段随 bili-collection 一起到位）",
+      "enabled": true,
+      "anchors": ["renderer-modules", "main-process", "preload-main"],
+      "files": [
+        { "from": "files/public/quick-search.html", "to": "public/quick-search.html" },
+        { "from": "files/public/js/mods/loader.js", "to": "public/js/mods/loader.js" },
+        { "from": "files/public/js/mods/10-quick-search-host.js", "to": "public/js/mods/10-quick-search-host.js" },
+        { "from": "files/desktop/mods-host.js", "to": "desktop/mods-host.js" },
+        { "from": "files/desktop/mods-quick-search-preload.js", "to": "desktop/mods-quick-search-preload.js" }
+      ]
+    },
+    {
+      "id": "bili-source",
+      "title": "B 站音源（搜索 / 合集分 P / 取址 / 歌词 / 会话 + 音频代理补丁）",
+      "enabled": true,
+      "anchors": ["server-routes", "server-audio-headers", "server-audio-type", "playback-gapless-url", "playback-url", "renderer-modules"],
+      "files": [
+        { "from": "files/bilibili-api.js", "to": "bilibili-api.js" },
+        { "from": "files/mods/server-api.js", "to": "mods/server-api.js" },
+        { "from": "files/public/js/mods/loader.js", "to": "public/js/mods/loader.js" },
+        { "from": "files/public/js/mods/05-sources.js", "to": "public/js/mods/05-sources.js" }
+      ]
+    },
+    {
+      "id": "no-update",
+      "title": "关掉更新检查（作者已停更；升级会把 resources/app 换掉、冲掉外挂）",
+      "enabled": true,
+      "anchors": ["server-routes"],
+      "files": [
+        { "from": "files/mods/server-api.js", "to": "mods/server-api.js" }
+      ],
+      "note": "不改 package.json 的 mineradio.update.provider，改成接管 /api/update/*：那个 JSON 一更新就回来了"
+    },
+    {
+      "id": "extra-sources",
+      "title": "咪咕 / Internet Archive / Radio Paradise 三个免登录源",
+      "enabled": false,
+      "status": "待搬：本体文件已在包里，缺后端路由与渲染层档位/换源接线",
+      "anchors": ["server-routes"],
+      "files": [
+        { "from": "files/migu-api.js", "to": "migu-api.js" },
+        { "from": "files/internetarchive-api.js", "to": "internetarchive-api.js" },
+        { "from": "files/radioparadise-api.js", "to": "radioparadise-api.js" }
+      ]
+    }
+  ]
+}
