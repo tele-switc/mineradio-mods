@@ -5,6 +5,9 @@
 
 上游作者已于 2026-09-21 停止维护（GPL-3.0-only）。本包沿用同一许可证，改动以源码形式一并提供。
 
+仓库：<https://github.com/tele-switc/mineradio-mods>（公开）。Clone 下来直接跑就行，
+**不需要装 Node** —— `node` 换成你自己那份 `Mineradio.exe` 并设上 `ELECTRON_RUN_AS_NODE=1` 即可（见下）。
+
 ---
 
 ## 它是怎么"不被更新冲掉"的
