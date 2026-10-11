@@ -115,7 +115,9 @@
         { "from": "files/bilibili-api.js", "to": "bilibili-api.js" },
         { "from": "files/mods/server-api.js", "to": "mods/server-api.js" },
         { "from": "files/public/js/mods/loader.js", "to": "public/js/mods/loader.js" },
-        { "from": "files/public/js/mods/05-sources.js", "to": "public/js/mods/05-sources.js" }
+        { "from": "files/public/js/mods/05-sources.js", "to": "public/js/mods/05-sources.js" },
+        { "from": "files/public/js/mods/20-bili-collection.js", "to": "public/js/mods/20-bili-collection.js" },
+        { "from": "files/public/css/mods-bili-collection.css", "to": "public/css/mods-bili-collection.css" }
       ]
     },
     {

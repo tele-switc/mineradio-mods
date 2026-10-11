@@ -1,0 +1,90 @@
+/* mineradio-mods：B 站合集分 P 面板的样式（从开发版 index.css 里搬出来的一组新选择器，
+   上游没有这些类名，所以整份随外挂注入，不改上游 CSS 文件）*/
+.bili-parts-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-basis: 100%;
+  padding-left: 52px;
+  margin-top: 2px
+}
+
+.bili-parts-toggle,
+.bili-parts-queue-all {
+  font-size: 11px;
+  line-height: 1.6;
+  padding: 2px 9px;
+  border-radius: 999px;
+  cursor: pointer;
+  color: rgba(255, 255, 255, .72);
+  background: rgba(255, 255, 255, .06);
+  border: 1px solid rgba(255, 255, 255, .12);
+  transition: background .18s, color .18s
+}
+
+.bili-parts-toggle:hover,
+.bili-parts-queue-all:hover {
+  background: rgba(var(--fc-accent-rgb), .18);
+  color: rgba(255, 255, 255, .92)
+}
+
+.bili-parts-state {
+  font-size: 11px;
+  color: rgba(255, 255, 255, .42)
+}
+
+.bili-parts-panel {
+  flex-basis: 100%;
+  padding-left: 52px;
+  margin: 4px 0 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 268px;
+  overflow-y: auto;
+  overscroll-behavior: contain
+}
+
+.bili-parts-more {
+  font-size: 10px;
+  color: rgba(255, 255, 255, .38);
+  padding: 4px 8px
+}
+
+.bili-part-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background .16s
+}
+
+.bili-part-row:hover {
+  background: rgba(var(--fc-accent-rgb), .12)
+}
+
+.bili-part-index {
+  font-size: 10px;
+  color: rgba(255, 255, 255, .35);
+  min-width: 18px;
+  text-align: right;
+  font-variant-numeric: tabular-nums
+}
+
+.bili-part-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: rgba(255, 255, 255, .85);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis
+}
+
+.bili-part-duration {
+  font-size: 10px;
+  color: rgba(255, 255, 255, .42);
+  font-variant-numeric: tabular-nums
+}

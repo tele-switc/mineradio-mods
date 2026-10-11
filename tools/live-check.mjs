@@ -196,6 +196,49 @@ try {
     check('那一段带自己的 cid（外挂的取址锚点生效，不是整条第一 P）',
       !!played.cid && played.part > 0, `cid=${played.cid || '空'} P${played.part}`);
   }
+  // ---- 主界面那一侧：搜索结果行里的分 P 面板（包装 searchSongResultHtml 注入的）----
+  // 脚本化搜索必须先把 #search-input 的值设好再调 doSearch：上游那个函数有个
+  // "输入框内容与查询词不一致就整批丢掉"的守卫，不设值会得到 0 行，看着像"没结果"。
+  await main.ev(`(function(){var el=document.getElementById('search-input'); el.value=${JSON.stringify(QUERY)};})()`);
+  await main.ev(`doSearch(${JSON.stringify(QUERY)})`);
+  let biliRows = 0;
+  for (let i = 0; i < 40; i++) {
+    await sleep(700);
+    biliRows = await main.ev(`document.querySelectorAll('.search-result[data-source="bilibili"]').length`);
+    if (biliRows) break;
+  }
+  check('主界面搜得到 B 站结果（外挂源进了软件的搜索路径）', biliRows > 0, `${biliRows} 行`);
+  const toggles = await main.ev(`document.querySelectorAll('.bili-parts-toggle').length`);
+  check('每条 B 站结果行都挂上"分段 / 合集"面板入口', toggles >= biliRows && toggles > 0,
+    `${toggles} 颗按钮 / ${biliRows} 行`);
+  let expanded = 0;
+  for (let t = 0; t < Math.min(6, toggles); t++) {
+    await main.ev(`(function(){var b=document.querySelectorAll('.bili-parts-toggle'); if(b[${t}]) b[${t}].click();})()`);
+    await sleep(1200);
+    expanded = await main.ev(`document.querySelectorAll('.bili-part-row').length`);
+    if (expanded >= 2) break;
+  }
+  check('点开展开能看到分 P 列表', expanded >= 2, `${expanded} 段列出来了`);
+  if (expanded >= 2) {
+    const before = await main.ev(`(typeof playQueue!=='undefined'&&playQueue)?playQueue.length:-1`);
+    await main.ev(`(function(){var r=document.querySelectorAll('.bili-part-row'); if(r[1]) r[1].click();})()`);
+    let part = null;
+    for (let i = 0; i < 25; i++) {
+      await sleep(600);
+      part = JSON.parse(await main.ev(`JSON.stringify({
+        queue:(typeof playQueue!=='undefined'&&playQueue)?playQueue.length:-1,
+        name:(typeof currentCoverSong==='function'&&currentCoverSong())?(currentCoverSong().name||''):'',
+        cid:(typeof currentCoverSong==='function'&&currentCoverSong())?String(currentCoverSong().cid||''):'',
+        playing:!!(typeof audio!=='undefined'&&audio&&audio.src&&!audio.paused&&!audio.ended)})`));
+      if (part.playing) break;
+    }
+    check('主界面点某一段：单独播那一段（带自己的 cid、真出声）',
+      !!part.cid && part.playing && part.queue >= before,
+      `播「${part.name}」cid=${part.cid || '空'}，队列 ${before}→${part.queue}`);
+    const pack = await main.ev(`(function(){var b=document.querySelector('.bili-parts-queue-all');return b?b.textContent.trim():'';})()`)
+      .catch(() => '');
+    check('展开后给出「整包入队 N 段」', /整包入队/.test(pack), pack || '（没展开到带整包入队的那条）');
+  }
 } catch (e) {
   console.error('[live-check 异常] ' + ((e && e.stack) || e));
   results.push({ name: '异常', ok: false });

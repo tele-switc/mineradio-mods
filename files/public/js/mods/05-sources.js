@@ -76,6 +76,51 @@
     return typeof originalLyric === 'function' ? originalLyric.apply(this, arguments) : '';
   };
 
+  // 让主界面的搜索结果里也出现 B 站行：上游的 fetchMusicSearchResults 只认识它自己那几家，
+  // 所以在这里把外挂源的一页并进去（All 档）。BL 单独那一档上游没有标签，交给浮窗自己走。
+  var originalFetch = window.fetchMusicSearchResults;
+  if (typeof originalFetch === 'function') {
+    window.fetchMusicSearchResults = async function (q, mode, previousPages) {
+      var base = await originalFetch.apply(this, arguments);
+      try {
+        var previous = (previousPages && previousPages.bilibili) || null;
+        var offset = previous && previous.hasMore ? (Number(previous.nextOffset) || 0) : 0;
+        var data = await window.apiJson(REGISTRY.bilibili.search + '?keywords=' + encodeURIComponent(q)
+          + '&limit=12&offset=' + offset);
+        var songs = (data && Array.isArray(data.songs)) ? data.songs : [];
+        var nextOffset = Number(data && data.nextOffset);
+        if (!isFinite(nextOffset) || nextOffset <= offset) nextOffset = offset + songs.length;
+        var pages = Object.assign({}, (base && base.providerPages) || {});
+        pages.bilibili = {
+          offset: offset, nextOffset: nextOffset, limit: 12,
+          hasMore: songs.length > 0 && (data && data.hasMore != null ? !!data.hasMore : true),
+        };
+        var merged = ((base && base.songs) || []).concat(songs);
+        return {
+          songs: merged, providerPages: pages,
+          hasMore: !!(base && base.hasMore) || pages.bilibili.hasMore,
+        };
+      } catch (e) { return base; }
+    };
+  }
+
+  // 浮窗那一侧的合并搜索也认这个源（它自己判 __mrModsHas）
+  window.__mrModsSearchPage = async function (mode, q, offset) {
+    var entry = REGISTRY[mode];
+    if (!entry) return { songs: [], providerPages: {}, hasMore: false };
+    var data = await window.apiJson(entry.search + '?keywords=' + encodeURIComponent(q)
+      + '&limit=' + (Number(entry.pageLimit) || 12) + '&offset=' + (Number(offset) || 0));
+    var songs = (data && Array.isArray(data.songs)) ? data.songs : [];
+    var nextOffset = Number(data && data.nextOffset);
+    if (!isFinite(nextOffset) || nextOffset <= (Number(offset) || 0)) nextOffset = (Number(offset) || 0) + songs.length;
+    var pages = {};
+    pages[mode] = {
+      offset: Number(offset) || 0, nextOffset: nextOffset, limit: entry.pageLimit || 12,
+      hasMore: songs.length > 0 && (data && data.hasMore != null ? !!data.hasMore : true),
+    };
+    return { songs: songs, providerPages: pages, hasMore: pages[mode].hasMore };
+  };
+
   // 浮窗与主界面都问这句："这个源在不在？"（不装 bili-source 时 BL 档就该消失）
   window.__mrModsHas = function (provider) { return !!REGISTRY[String(provider || '')]; };
 })();

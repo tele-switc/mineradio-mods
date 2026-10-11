@@ -14,6 +14,7 @@
   var MODS = [
     'js/mods/05-sources.js',
     'js/mods/10-quick-search-host.js',
+    'js/mods/20-bili-collection.js',
   ];
 
   function read(path) {

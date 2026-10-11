@@ -301,6 +301,8 @@ async function quickSearchHostModSearch(mode, useNextPages) {
   if (!entry) return { songs: [], providerPages: {}, hasMore: false };
   var previous = pool.providerPages[mode] || {};
   var offset = useNextPages ? Math.max(0, Number(previous.nextOffset) || 0) : 0;
+  // 取页这件事交给源模块本身（主界面与浮窗共用同一份，不各写一遍）
+  if (typeof window.__mrModsSearchPage === 'function') return await window.__mrModsSearchPage(mode, pool.query, offset);
   var limit = Number(entry.pageLimit) || 12;
   var data = await apiJson(entry.search + '?keywords=' + encodeURIComponent(pool.query)
     + '&limit=' + limit + '&offset=' + offset);
