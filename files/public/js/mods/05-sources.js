@@ -96,6 +96,18 @@
           hasMore: songs.length > 0 && (data && data.hasMore != null ? !!data.hasMore : true),
         };
         var merged = ((base && base.songs) || []).concat(songs);
+        // 上游 renderSongSearchResults 只画前 MUSIC_SEARCH_INITIAL_VISIBLE 行，
+        // 直接拼在末尾 = 永远看不见（第一次真跑 0 行就是这个原因）。
+        // 所以用软件自己的打分重排，不另立一套排序口径；没有那个函数就退到"插在前几行之后"。
+        if (typeof window.scoreSongSearchResult === 'function') {
+          merged.forEach(function (song, index) {
+            try { song._searchScore = window.scoreSongSearchResult(song, q, index); } catch (e) { }
+          });
+          merged.sort(function (a, b) { return (b && b._searchScore || 0) - (a && a._searchScore || 0); });
+        } else {
+          var at = Math.min(4, merged.length);
+          Array.prototype.splice.apply(merged, [at, 0].concat(merged.splice(merged.length - songs.length)));
+        }
         return {
           songs: merged, providerPages: pages,
           hasMore: !!(base && base.hasMore) || pages.bilibili.hasMore,

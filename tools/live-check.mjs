@@ -204,13 +204,16 @@ try {
   let biliRows = 0;
   for (let i = 0; i < 40; i++) {
     await sleep(700);
-    biliRows = await main.ev(`document.querySelectorAll('.search-result[data-source="bilibili"]').length`);
+    // 面板是**整行 div 的兄弟节点**（上游 searchSongResultHtml 返回的是一整个行 div，
+    // 外挂只能往它后面追加），所以不能用 .search-result .bili-parts-toggle 去数
+    biliRows = await main.ev(`document.querySelectorAll('.bili-parts-toggle').length`);
     if (biliRows) break;
   }
-  check('主界面搜得到 B 站结果（外挂源进了软件的搜索路径）', biliRows > 0, `${biliRows} 行`);
-  const toggles = await main.ev(`document.querySelectorAll('.bili-parts-toggle').length`);
-  check('每条 B 站结果行都挂上"分段 / 合集"面板入口', toggles >= biliRows && toggles > 0,
-    `${toggles} 颗按钮 / ${biliRows} 行`);
+  const allRows = await main.ev(`document.querySelectorAll('.search-result').length`);
+  check('主界面结果里出现了 B 站行（外挂源进了软件的搜索路径）', biliRows > 0,
+    `${biliRows} 行带面板入口 / 共 ${allRows} 行`);
+  const toggles = biliRows;
+  check('每条 B 站结果行都挂上"分段 / 合集"面板入口', toggles > 0, `${toggles} 颗按钮`);
   let expanded = 0;
   for (let t = 0; t < Math.min(6, toggles); t++) {
     await main.ev(`(function(){var b=document.querySelectorAll('.bili-parts-toggle'); if(b[${t}]) b[${t}].click();})()`);

@@ -78,7 +78,7 @@ node install.mjs --uninstall     :: 撤锚点、删投放的文件（备份留�
 | `bili-source` | ✅ 已可用 | **B 站音源**：搜索、**合集分 P 当播放列表展开**、单独播其中一首、整包入队、非音乐内容过滤、音频代理的 Referer 与容器类型。播放接线走两个锚点（`playback-gapless-url` / `playback-url`），渲染层靠包装 `songProviderKey` / `normalizePlaybackProvider` / `lyricEndpointForSong` 让上游认识这个新源——上游那个 `songProviderKey` 对不认识的源一律回 `netease`，不补这一课浮窗连"这是合集"都标不出来。 |
 | `no-update` | ✅ 已可用 | 接管 `/api/update/*`：一律回"没有更新"。作者已停更，而"升级到新版本"对外挂包来说就等于"外挂被冲掉"，所以宁可在后端答死，也不去改 `package.json`（那个文件一更新就回来了）。 |
 | `extra-sources` | ⛔ 待搬 | 咪咕 / Internet Archive / Radio Paradise 三个免登录源，本体文件已在包里，缺后端路由与渲染层档位、换源接线。 |
-| `bili-collection-ui` | 🟡 进行中 | 主界面搜索结果行里的分 P 面板（包装 `searchSongResultHtml` 注入）+ 让 All 档并进 B 站那一页。**浮窗那一侧已经全绿**；主界面这一侧 `live-check` 现在还是红的（搜不到 B 站行），没修完之前别当它可用。 |
+| `bili-collection-ui` | ✅ 已可用 | 主界面搜索结果行里的**分 P 面板**：包装上游 `searchSongResultHtml` 往行尾追加面板（样式抽成独立 `mods-bili-collection.css` 注入，不碰上游 CSS），展开 184 段那种合集、点某一段单独播、整包入队。并让上游 All 档的合并结果里并进 B 站那一页（用软件自己的 `scoreSongSearchResult` 重排，否则拼在末尾永远落在可见窗口之外）。 |
 | 其余（贴边组件、屏幕边缘进度轨、Ctrl+H 清空与存档、自动换源、登录入口） | ⛔ 待搬 | 每一族的落点、难度、要包装哪个函数都写在 [`docs/PORTING.md`](docs/PORTING.md)，是照着上游原版逐个核对过的。B 站非音乐过滤已随 `bili-source` 一起到位（在 `bilibili-api.js` 里，零锚点）。 |
 
 ## 真跑验证（不看你说的话，看它跑起来）
@@ -94,7 +94,7 @@ node tools/live-check.mjs            :: 真起一个实例，真开浮窗、真�
 运行时文件用硬链接过来，不额外占磁盘）。断言包括：主窗口拿到 `desktopMods` 桥接与外挂模块、
 外挂后端有响应、BL 档存在且切得过去、搜到的行源都是 bilibili 且**每条都带合集/分段徽章**、
 时长按秒显示、`End` 能翻页、回车展开分 P、单独播某一段时队列只多那一条且带自己的 cid、
-顶上那行是整包入队。最近一次：**14/14**。
+顶上那行是整包入队。最近一次：**21/21**。
 
 ## 已知限制
 
