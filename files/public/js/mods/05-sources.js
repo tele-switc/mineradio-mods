@@ -158,6 +158,19 @@
     return String(value == null ? '' : value).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
   }
 
+  // 队列身份键。上游那个 queueItemKey 没有 B 站那一路，B 站歌会掉进 `song:` + id，
+  // 而分 P 合集里每一段的 id 都是同一个 bvid —— 于是十几段全折叠成同一条，
+  // 点第二首其实还在播第一 P（真机自检抓到的：队列没多一条、当前曲目的 cid 是空）。
+  // 开发仓库是往 09-queue-snapshot-autoplay.js 里加分支，外挂这里包装同名全局函数。
+  var originalQueueItemKey = window.queueItemKey;
+  window.queueItemKey = function (song) {
+    if (providerOf(song) === 'bilibili') {
+      return 'bilibili:' + String((song && (song.bvid || song.id)) || '') + ':' + String((song && song.cid) || '');
+    }
+    // IA / RP 不用管：它们的 id 本来就是 archiveId / `rp:<chan>`，上游那条 `song:` + id 已经分得开
+    return typeof originalQueueItemKey === 'function' ? originalQueueItemKey.apply(this, arguments) : '';
+  };
+
   // 让主界面的搜索结果里也出现外挂源：上游的 fetchMusicSearchResults 只认识它自己那几家，
   // 所以在这里把 inAll 的那些源各一页并进去（All 档）。
   var originalFetch = window.fetchMusicSearchResults;
