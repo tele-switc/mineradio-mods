@@ -665,6 +665,17 @@ try {
   check('进这一段前先有东西可编辑（前面几步真搜过真播过）',
     seeded.history > 0 && seeded.queue > 0, `搜索记录 ${seeded.history} 条 · 队列 ${seeded.queue} 首`);
 
+  // 聆听记录这一族要有东西可删。前面那几步靠"真起播"攒出 history，但 B 站偶尔整档
+  // 返回 0 条（实测同一份代码两次跑，一次有一次没有），那样这两条断言只能报 -1，
+  // 分不清是功能坏了还是根本没数据 —— 所以这里自己种两条，判据就永远有得比。
+  await main.ev(`(function(){
+    var st={history:[{key:'check:a',id:1,name:'Check 听过一',artist:'tester',listenMs:300000,playedAt:Date.now()-60000},
+      {key:'check:b',id:2,name:'Check 听过二',artist:'tester',listenMs:120000,playedAt:Date.now()}],
+      songs:{'check:a':{key:'check:a',plays:1,listenMs:300000},'check:b':{key:'check:b',plays:1,listenMs:120000}},
+      artists:{tester:{plays:2,listenMs:420000}},updatedAt:Date.now()};
+    try { localStorage.setItem('mineradio-listen-stats-v1', JSON.stringify(st)); } catch (e) { }
+    try { listenStatsState = st; } catch (e) { }
+    return 1;})()`);
   await main.ev(`(function(){var i=document.getElementById('search-input'); if(i) i.blur();})()`);
   await main.press(KEY.CtrlH);
   await sleep(800);

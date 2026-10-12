@@ -966,6 +966,9 @@ function dangerArchiveSetTab(tab) {
   }
   if (next === 'archive') dangerArchiveRefreshList();
   else { dangerArchiveEditing = null; dangerArchiveRenderHistoryPage(); }
+  // 状态行那句提示属于上一页（"改名字：回车保存…"），换页签要一起清掉，
+  // 不然切到「存档」还挂着上一页的改名提示，看着像上一条操作没做完
+  dangerArchiveSetStatus('', '');
   return next;
 }
 
