@@ -14,29 +14,14 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { applyAnchor, removeAnchor, readAnchor } from '../lib/anchors.mjs';
+import { prepareFixture, skipReason, DEV_REPO, fixtureDir } from './fixture.mjs';
 
 const PACK = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const DEV_REPO = process.env.MINERADIO_DEV_REPO || 'E:/Projects/mineradio';
-const BASELINE = 'd43de56';
-const FIXTURE = path.join(PACK, '.fixture', 'stock-app');
+const FIXTURE = fixtureDir(PACK);
 const MANIFEST = JSON.parse(fs.readFileSync(path.join(PACK, 'mods.json'), 'utf8'));
 
-function buildFixture() {
-  if (fs.existsSync(path.join(FIXTURE, 'server.js'))) return true;
-  if (!fs.existsSync(path.join(DEV_REPO, '.git'))) return false;
-  fs.mkdirSync(FIXTURE, { recursive: true });
-  execFileSync('bash', ['-c',
-    `git -C "${DEV_REPO}" archive ${BASELINE} | tar -x -C "${FIXTURE}"`,
-  ], { stdio: 'inherit' });
-  return fs.existsSync(path.join(FIXTURE, 'server.js'));
-}
-
-const haveFixture = buildFixture();
-function skip(t) {
-  if (haveFixture) return false;
-  t.skip(`没有上游原版夹具（把开发仓库路径给 MINERADIO_DEV_REPO，或预置 .fixture/stock-app）`);
-  return true;
-}
+const fixture = prepareFixture(PACK, DEV_REPO);
+function skip(t) { return skipReason(t, fixture); }
 
 function tmpApp() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mineradio-mods-test-'));
