@@ -18,7 +18,7 @@
    锚点是成对注释包起来的一行/一段，安装器认标记不认上下文：
 
    ```js
-   // <<mineradio-mods:main-process v0.1.0>>
+   // <<mineradio-mods:main-process v0.2.0>>
    try { require('./mods-host.js'); } catch (e) { ... }
    // >>mineradio-mods:main-process
    ```
@@ -35,7 +35,7 @@
    | `server-audio-type` | `server.js` | 1 行：音频容器类型（DASH 的 mp4a、IA 的 opus、RP 无扩展名的 AAC） |
    | `playback-gapless-url` | `13-playback-start-audio.js` | 1 行：无缝专辑预取的取址也认外挂源 |
 | `playback-url` | `13-playback-start-audio.js` | 1 行：主取址那串 if/else 之后，外挂源换掉直链 |
-| `preload-main` | `desktop/preload.js` | 一段桥接（沙箱预加载读不了磁盘，只能内联） |
+| `preload-main` | `desktop/preload.js` | 一段桥接（沙箱预加载读不了磁盘，`contextBridge` 暴露出去的对象又冻结了，只能内联）。现在带 16 个方法：浮窗 5 + 存档 4 + 贴边组件 7 |
 
 2. **开机自动重注入**。安装时加 `--autostart`，会在
    `%LOCALAPPDATA%\MineradioMods\` 放一份外挂本体 + 一个登录时跑一次的检查：
@@ -89,12 +89,15 @@ node install.mjs --uninstall --mod quick-search  :: 只撤这一族，别的族�
 | 功能族 | 状态 | 说明 |
 |---|---|---|
 | `quick-search` | ✅ 已可用 | **Ctrl+Space 快速搜索浮窗**：不叫出主界面就能搜、能播；主窗口收在后台时照样能用。初屏 24 条，底部「查看更多」往前翻页（点它 / 按 `End` / 滚到底），上限 120。平台档：All / NE / QQ / KG / QS / BL / RP / IA / Podcast。 |
-| `bili-source` | ✅ 已可用 | **B 站音源**：搜索、**合集分 P 当播放列表展开**、单独播其中一首、整包入队、非音乐内容过滤、音频代理的 Referer 与容器类型。播放接线走两个锚点（`playback-gapless-url` / `playback-url`），渲染层靠包装 `songProviderKey` / `normalizePlaybackProvider` / `lyricEndpointForSong` 让上游认识这个新源——上游那个 `songProviderKey` 对不认识的源一律回 `netease`，不补这一课浮窗连"这是合集"都标不出来。 |
+| `bili-source` | ✅ 已可用 | **B 站音源**：搜索、**合集分 P 当播放列表展开**、单独播其中一首、整包入队、非音乐内容过滤、音频代理的 Referer 与容器类型。播放接线走两个锚点（`playback-gapless-url` / `playback-url`），渲染层靠包装 `songProviderKey` / `normalizePlaybackProvider` / `lyricEndpointForSong` 让上游认识这个新源——上游那个 `songProviderKey` 对不认识的源一律回 `netease`，不补这一课浮窗连"这是合集"都标不出来。还补了队列身份键：上游那个 `queueItemKey` 没有 B 站那一路，同一份分 P 合集的十几段会全折叠成同一条（点第二首其实还在播第一 P），外挂给它加了 `bilibili:<bvid>:<cid>`。 |
 | `no-update` | ✅ 已可用 | 接管 `/api/update/*`：一律回"没有更新"。作者已停更，而"升级到新版本"对外挂包来说就等于"外挂被冲掉"，所以宁可在后端答死，也不去改 `package.json`（那个文件一更新就回来了）。 |
 | `free-sources` | ✅ 已可用 | **两个免登录源：Internet Archive + Radio Paradise**（都不要账号、不要 API key、本机不落任何会话）。后端路由 `/api/internetarchive/{search,song/url,lyric}`、`/api/radioparadise/{channels,search,song/url,now-playing,lyric}`；渲染层 `05-sources.js` 的源表加两项，浮窗多出 IA / RP 两档。**IA 一行 = archive.org 的一个条目**（常见为一整张专辑或一场演出），实际播哪个文件由后端按音质档过一遍 Chromium 可播性白名单再挑，行上老实标着「条目」；**RP 是 320k AAC 连续直播**，没有单曲、拖不了进度、没有同步歌词，标着「直播」，也只在自己的档位出现（All 档里掺六条电台会把音乐结果挤下去）。 |
-| `migu-source` | ⛔ 待搬 | 咪咕要会话：官方登录窗 + 把 cookie 交给后端，外挂得自己存 `~/.mineradio/migu-cookie`（不能存安装目录，更新会没）。本体文件 `migu-api.js` 已在包里。 |
+| `danger-archive` | ✅ 已可用 | **Ctrl+H 一键清空与存档**：按 `Ctrl+H` 出密码门（密码 `mineradio`，防误触不是防外人），解锁后顶部一颗「一键清空搜索记录、播放列表与聆听统计」，点它之前**必须先存档成功**才允许清；下面每一条是清空前的存档，点一条整个回到那一刻（搜索记录、队列、当前曲目、进度）。存档落在 `%APPDATA%\Mineradio\mineradio-danger-archive.json`，**不在 localStorage**（它备份的正是 localStorage 那三条）、也不在安装目录（更新会没）。模态框与样式都是运行时注入的，上游 `index.html` / `index.css` 一个字不动。 |
+| `edge-widgets` | ✅ 已可用 | **贴边播放小组件 + 屏幕边缘进度轨**：那排桌面按钮里多一颗「贴边」（运行时插入），点开是一个透明无边框的小控制台（封面/歌名/进度/上一首下一首/音量），可以拖到屏幕右、下、左边吸附；闲置或收到屏边时它让位给**整条屏幕边变成进度条**，指针回到那条边就自己展开，在进度条上点一下就跳到那一处。右键那颗按钮是换吸附边。两个窗口都是外挂自建的（浮窗是先例），所以不需要新锚点。 |
+| `auto-source-fallback` | ✅ 已可用 | **自动换源**：当前源取不到地址时，自己去其它源找同一首歌，找到就播并写明"已从 网易云 切到 B 站（音频流 · 码率）· 按标题与时长匹配的版本"。免登录那条链是 网易云 → B 站；B 站的采纳判据（翻唱/器乐改编/伴奏/变速/铃声都收并标注，教学/测评/反应视频拒）与音质档位共用同一份，从开发仓库一起搬来。**IA 与 RP 明确不参与自动换源**：这两个没有"同名同歌手同一录音"的可靠判据，自动接管会播错内容，比不播更糟。 |
+| `migu-source` | 🚫 决定不做 | 咪咕要会话（官方登录窗 + cookie 交给后端）。本体文件 `migu-api.js` 留在包里但不投放，`mods.json` 的 `migu-source` 保持 `enabled:false`。连带自动换源的免登录池子只有 `netease + bilibili`。 |
 | `bili-collection-ui` | ✅ 已可用 | 主界面搜索结果行里的**分 P 面板**：包装上游 `searchSongResultHtml` 往行尾追加面板（样式抽成独立 `mods-bili-collection.css` 注入，不碰上游 CSS），展开 184 段那种合集、点某一段单独播、整包入队。并让上游 All 档的合并结果里并进 B 站那一页（用软件自己的 `scoreSongSearchResult` 重排，否则拼在末尾永远落在可见窗口之外）。 |
-| 其余（贴边组件、屏幕边缘进度轨、Ctrl+H 清空与存档、自动换源、登录入口） | ⛔ 待搬 | 每一族的落点、难度、要包装哪个函数都写在 [`docs/PORTING.md`](docs/PORTING.md)，是照着上游原版逐个核对过的。B 站非音乐过滤已随 `bili-source` 一起到位（在 `bilibili-api.js` 里，零锚点）。 |
+| 其余（登录入口与音质档位 UI、托盘备用入口） | ⛔ 待搬 / 已放弃 | 每一族的落点、难度、要包装哪个函数都写在 [`docs/PORTING.md`](docs/PORTING.md)，是照着上游原版逐个核对过的。B 站非音乐过滤已随 `bili-source` 一起到位（在 `bilibili-api.js` 里，零锚点）。 |
 
 ## 真跑验证（不看你说的话，看它跑起来）
 
@@ -114,21 +117,29 @@ node tools/live-check.mjs            :: 真起一个实例，真开浮窗、真�
 断言包括：主窗口拿到 `desktopMods` 桥接与外挂模块、
 外挂后端有响应、BL 档存在且切得过去、搜到的行源都是 bilibili 且**每条都带合集/分段徽章**、
 时长按秒显示、`End` 能翻页、回车展开分 P、单独播某一段时队列只多那一条且带自己的 cid、
-顶上那行是整包入队；IA / RP 那两族另加：源表注册、`songProviderKey` 认得 `archiveId` 与
+顶上那行是整包入队；IA / RP 两族另加：源表注册、`songProviderKey` 认得 `archiveId` 与
 `rpChan=0`（Main Mix 的 chan 就是 0，真值判断会漏）、歌词走自己的端点、频道表与取址、
 **从浮窗按回车真的起播出声**（IA 走 `/api/audio` 代理、RP 那条无扩展名的 AAC 报对容器类型）、
-行上的「条目 / 直播」徽章、以及主界面 All 档滚到 IA 那一行时源标签写的是 `IA` 而不是被兜成 `NE`。
-最近一次：**39/39**。
+行上的「条目 / 直播」徽章、主界面 All 档滚到 IA 那一行时源标签写的是 `IA` 而不是被兜成 `NE`；
+贴边组件那族是**真开第二个窗口**：按钮插进上游那排、组件窗口出现、显示的是正在播的那首连总长都对、
+那颗播放键真的在遥控主窗口（按下去换个状态再按回来）、收到屏边时进度轨窗口出现且画的是这一帧真实进度、
+在轨上点一下主窗口真的跳转、指针回到那条边组件重新展开、再点一次两个窗口都收掉；
+Ctrl+H 那族是**真抹真恢复**：密码门（错的会被数出来）、一键清空后 localStorage 三条都空、队列空、
+`audio.paused` 为真，而存档确实写在 userData 而不是 `resources/app` 下面，点那条存档又整个回到清空前；
+自动换源那族是**真的换**：塞一条网易云取不到地址的歌起播，等它自己找到 B 站那一版并播响，
+提示卡上写着"已从 网易云 切到 B 站（音频流 · 码率）· 按标题与时长匹配的版本"。
+最近一次：**62/62**。
 
 ## 已知限制
 
 - **托盘菜单**里那几条备用入口（咪咕登录等）没做——Tray 实例与菜单模板都是上游模块私有的，没有钩子点。浮窗与热键不受影响。
-- **"关主窗口=收进后台"** 的判定在上游 `main.js` 里，外挂窗口不在其中。现在的处理是：主窗口一关，浮窗先自己收起来，避免一个看不见的浮窗把进程留在后台退不掉。想要"浮窗开着也算收进后台"，就得加第 9 个锚点。
-- 全局热键默认 `Ctrl+Space`，外挂自己占的，不在软件的按键设置里；改它用环境变量 `MINERADIO_MODS_HOTKEY`（设成 `off` 就是关掉，只用软件内的入口）。
+- **"关主窗口=收进后台"** 的判定在上游 `main.js` 里，外挂窗口不在其中。现在的处理是：主窗口一关，浮窗、贴边组件与进度轨都先自己收起来，退出前再统一 `destroy()`，避免一个看不见的窗口把进程留在后台退不掉（这个坑踩过）。想要"外挂窗口开着也算收进后台"，就得加第 9 个锚点。
+- 全局热键默认 `Ctrl+Space`，外挂自己占的，不在软件的按键设置里；改它用环境变量 `MINERADIO_MODS_HOTKEY`（设成 `off` 就是关掉，只用软件内的入口）。`Ctrl+H` 是**页面内**的按键监听（不是全局热键），软件窗口聚焦时才生效。
 - 只测过 Mineradio **2.2.0**。上游改了锚点附近的代码时安装器会明确报 `drift` 并拒绝瞎插，那时需要更新 `mods.json` 里的 `locator`。
+- **`auto-source-fallback` 是整模块接管**：它用同名全局函数重新声明上游 `11-provider-fallback.js` 的那一套（不整份替换上游文件，否则卸载回不到逐字节原版）。代价是上游哪天改了这条链，`--verify` 看不出冲突——我们这份会安静地赢。唯一兜得住的是每次改完真跑一遍 `tools/live-check.mjs`（最后那三条换源断言就是干这个的）。
 - **IA 的一行不是一个单曲**，是一个 archive.org 条目；条目里挑哪个文件由后端按音质档决定（只挑浏览器能解码的），所以列表上没有时长——真实时长在取址那一步才回来。要精确到某一轨得等"条目下钻"（还没做）。
 - **RP 是直播**：没有单曲搜索（关键词只用来把命中的频道排前面）、拖不了进度、没有同步歌词，也不进 All 档。
-- **自动换源（`11-provider-fallback.js`）还不知道这两个源**：播放失败时软件不会自己换到 IA/RP 上去，那条接线是 `docs/PORTING.md` 里的第 5 族。
+- **IA / RP 不参与自动换源**（与开发版同一口径）：它们没有"同名同歌手同一录音"的可靠判据，自动接管会播错内容，比不播更糟；只保留手动搜索与浮窗档位。
 
 ## 开发
 
@@ -141,11 +152,14 @@ lib/autostart.mjs  开机重注入的注册与撤销
 files/             要投放的外挂本体（路径相对 resources/app）
 blocks/            需要内联进上游文件的代码段（预加载桥接）
 tests/             安装器自测：夹具是**上游原版 2.2.0**
+tools/live-check.mjs                 端到端真跑（真开窗口、真打字、真出声）
+tools/check-page-expressions.mjs     改完 live-check 先跑它：把 88 条页面表达式单独解析一遍
 docs/PORTING.md    还没搬的功能族各自落在哪、怎么搬
 ```
 
 ```bat
 node --test tests/
+node tools/check-page-expressions.mjs
 ```
 
 测试全程在临时目录里跑，不碰你正在用的 Mineradio。夹具从旁边的开发仓库

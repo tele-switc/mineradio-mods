@@ -18,14 +18,14 @@
 | IA / RadioParadise | ✅ 已搬完（`free-sources`）：`mods/server-api.js` 里 8 条路由 + `05-sources.js` 源表两项 + 浮窗 IA / RP 两档 | 渲染层没有新锚点，全靠已有的 6 个；顺带**包装了 `songSourceTagHtml`**（上游那条只认 NE/QQ/KG/QS/SP 的三元链会把新源那行标成"NE"，class 对了文字还是错的） | `internetarchive-api.js`、`radioparadise-api.js`、`mods/server-api.js`、`05-sources.js` | 已在 `.live` 干净实例真跑到 39/39：含从浮窗起播 IA 条目与 RP 直播、`rpChan=0` 那个真值判断坑、All 档滚到 IA 行的标签文字 |
 | 咪咕后端 | `server.js` 链 | 锚点 `server-routes`（已有），照上面 IA/RP 那行的形状加 `handleMiguRoute` | `migu-api.js`（已在包里） | 比 IA/RP 多一件事：会话 |
 | 咪咕会话 | `server.js` 的 cookie 存取（`configuredCookieStores` 一带） | 外挂自己存 `~/.mineradio/migu-cookie`，**不动上游**（B 站那套 `readCookie`/`writeCookie` 直接照抄） | `migu-api.js` | 放家目录而不是安装目录，更新不丢 |
-| 自动换源（免登录源参与接力） | `11-provider-fallback.js`（开发版 +225 行） | **包装** `sourceFallback*` 那一组顶层函数；候选池要加新源 | 各 `*-api.js` | 这族最费时间，且和音质档位耦合 |
+| 自动换源（免登录源参与接力） | ✅ 已搬完（`auto-source-fallback`）：`files/public/js/mods/50-provider-fallback.js` | **整模块接管**：以外挂模块的形式重新声明上游 `11-provider-fallback.js` 的同名全局函数。**不要**改成"把文件投放到上游路径"——安装器对上游路径只会删文件、不会还原，卸载就回不到逐字节原版 | `50-provider-fallback.js` | 代价：上游改了这条链时 `--verify` 看不出来（锚点与投放文件都"对"），只有真跑能发现。咪咕不在包里 ⇒ 免登录池子只有 `netease + bilibili`，"有咪咕会话就提到链首"那两段留在开发版没接；IA/RP 明确排除在自动换源外 |
+| 贴边播放小组件 | ✅ 已搬完（`edge-widgets`）：`desktop/mods-widget-host.js` 自建窗口 + `public/mini-player.html` + `desktop/mods-mini-player-runtime.js`（纯几何）+ `desktop/mods-widget-preload.js` | 零新锚点（浮窗已是先例）；入口那颗「贴边」由 `40-widgets.js` 运行时插进上游那排 `.desktop-mode-btn` | `mini-player.html`、`mods-mini-player-runtime.js` | 两个窗口都是 `hide` 型的，退出前必须在 `before-quit` 里 `destroy()`，否则进程留在后台退不掉（踩过） |
+| 屏幕边缘进度轨 | ✅ 已搬完（与贴边同一族）：`public/edge-rail.html` + 同一个 `mods-widget-host.js` | 不是第二个开关：它就是组件收到屏边的那个形态，两个窗口的显示都由 `miniPlayerState.collapsed` 派生 | `edge-rail.html` | `getDisplayArea()` 是上游私有的 → 自己实现一份（就两行）。窗口横截面被 Windows 夹到 ~36px，必须**两遍定位** + 页面侧 `--bleed` 内缩，否则条子会被切掉一半 |
+| Ctrl+H 清空与存档 | ✅ 已搬完（`danger-archive`）：`desktop/mods-danger-archive-store.js` 在宿主里建实例并注册 4 个 ipcMain 通道；`public/js/mods/30-danger-archive.js` 当外挂模块装载 | 模态框那 41 行与那一段 CSS 全部**运行时注入**（上游 `index.html` 里没有它们），桥接走外挂自己的 `desktopMods`——上游 `desktopWindow` 是冻结的，事后补不进方法 | `mods-danger-archive-store.js`、`30-danger-archive.js`、`mods-danger-archive.css` | 存档写在 `userData`（不是 localStorage、也不是安装目录）：它备份的正是 localStorage 那三条。上游的"清空"是把键写成**空列表**而不是删键，所以自检要数"还剩几条"，不能量字节 |
 | 音质档位 / 登录入口 | `00-api-quality-output.js`、`01-login-modal-utils.js` 的 `platformStatus`、`04-user-modal-logout.js` 的 `openProviderLogin`、`03-login-modal-flows.js` | **包装**（都是顶层函数）；UI 行用运行时 DOM 注入 | — | 上游有个"登录彩蛋门"，别硬拆 |
-| 贴边播放小组件 | `main.js` 的 mini 窗口 + `mini-player.html` + `desktop/mini-player-runtime.js` | 窗口在 `mods-host.js` 里自建（已有先例：浮窗就是这么做的）；入口按钮 DOM 注入 | `mini-player.html`、`mini-player-runtime.js` | 与桌面嵌入模式的兼容要单独验 |
-| 屏幕边缘进度轨 | `main.js` 的 edgeRail 窗口 | 同上，宿主自建窗口 | `public/edge-rail.html` | 需要 `getDisplayArea` 之类的私有工具 → 自己实现一份 |
-| Ctrl+H 清空与存档 | `main.js` 的 `dangerArchiveStore` + 两个 ipcMain 通道；`20-danger-archive.js`；`index.html` 的 modal 节点 | 主进程侧 `require('.../desktop/danger-archive-store.js')` 在宿主里建实例；modal 用 DOM 注入；模块直接放 `files/public/js/modules/05-playback/20-danger-archive.js` 由 `loader.js` 装载 | `danger-archive-store.js`、`20-danger-archive.js` | 清空口径（回到从来没听过歌）依赖上游的存档函数，都要在包装里调 |
 | 关掉自动更新 | ✅ 已搬完：`mods/server-api.js` 里接管 `/api/update/latest` 与 `/api/update/(download|patch)*` | 锚点 `server-routes`（已有），**不改 `package.json`** | — | 上游的更新检查走它自己的后端，答"没有更新"比改配置抗更新 |
 | 托盘备用入口 | `main.js` 的 `createOrUpdateTray` | **改文件**（Tray 实例与菜单模板都是模块私有） | — | 决定放弃：软件内入口与热键都够 |
-| "关主窗口=收进后台"含浮窗 | `main.js` 的 `createWindowOnce` close 判定 | 需要第 9 个锚点；现在的替代是宿主在主窗口关闭时收起浮窗 | — | 已知限制，写在 README |
+| "关主窗口=收进后台"含浮窗 | `main.js` 的 `createWindowOnce` close 判定 | 需要第 9 个锚点；现在的替代是宿主在主窗口关闭时把**浮窗、贴边组件、进度轨**都收起来，退出前统一 `destroy()` | — | 已知限制，写在 README |
 | UI 文案 / CSS | `index.html`（+41/−0，全是独立新增节点）、`index.css`（+434/−0，全是新选择器） | DOM 注入 + 外挂 `<style>` 由 `loader.js` 插入 | — | 核过：没有任何一处"必须改 HTML/CSS 文件" |
 
 ## 搬下一个之前先做的事
@@ -39,3 +39,6 @@
    上游哪天改名，外挂应当安静地不生效，而不是把播放器弄白屏。
 4. 每搬完一族，在干净夹具上跑一遍 `install --go` + `node --check` 四个上游文件，
    再复制一份运行时（exe + dll + `resources/app`）真起一次实例验功能。
+5. 改了 `tools/live-check.mjs` 就先跑 `node tools/check-page-expressions.mjs`：它把每条
+   送给页面的表达式单独解析一遍。端到端一趟八到十分钟，模板字符串里少一个右括号
+   这种事不该用一次端到端去换（真发生过三次）。
