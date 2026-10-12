@@ -254,26 +254,50 @@ test('卸载要卸干净：app 目录里不留下任何原版没有的文件（�
 
 test('--uninstall --mod 只撤那一族，共用锚点与别的族的文件都不许动', (t) => {
   if (skip(t)) return;
+  // 这一条不写死"哪个锚点属于哪一族"：族数从 4 涨到 6 之后，原来那条断言（main-process
+  // 只属于 quick-search）当场就过时了 —— 硬编归属的测试会比代码先坏，反而盖住真问题。
+  // 现在改成从 mods.json 现算：这一族独占什么就撤什么，跟别族共用的一个字都不许动。
+  const enabled = MANIFEST.mods.filter((m) => m.enabled !== false);
+  const target = enabled.find((m) => m.id === 'quick-search') || enabled[0];
+  const others = enabled.filter((m) => m !== target);
+  const byId = new Map(anchors().map((a) => [a.id, a]));
+  const otherAnchors = new Set(others.flatMap((m) => m.anchors || []));
+  const ownAnchors = (target.anchors || []).filter((id) => !otherAnchors.has(id));
+  const sharedAnchors = (target.anchors || []).filter((id) => otherAnchors.has(id));
+  const otherFiles = new Set(others.flatMap((m) => (m.files || []).map((f) => f.to)));
+  const ownFiles = (target.files || []).map((f) => f.to).filter((to) => !otherFiles.has(to));
+  const sharedFiles = (target.files || []).map((f) => f.to).filter((to) => otherFiles.has(to));
+
   const { dir, app } = tmpApp();
   try {
     assert.equal(installer(['--path', app, '--go']).code, 0);
-    const r = installer(['--path', app, '--uninstall', '--mod', 'quick-search', '--go']);
+    const r = installer(['--path', app, '--uninstall', '--mod', target.id, '--go']);
     assert.equal(r.code, 0, r.out);
-    // quick-search 独有的两个锚点撤掉了
-    assert.equal(marked(app, 'desktop/main.js'), 0, 'main-process 只属于 quick-search，应该撤掉');
-    assert.equal(marked(app, 'desktop/preload.js'), 0, 'preload-main 只属于 quick-search，应该撤掉');
-    // 与另外三族共用的锚点一个字都不能动
-    assert.equal(marked(app, 'public/js/index-loader.js'), 1, 'renderer-modules 是三族共用的，撤了别人就瞎了');
-    assert.equal(marked(app, 'server.js'), 3, 'server.js 上那三条是 bili/free/no-update 共用的');
-    assert.equal(marked(app, 'public/js/modules/05-playback/13-playback-start-audio.js'), 2);
-    // 文件同理：quick-search 独占的删掉，别人在用的留下
-    assert.ok(!fs.existsSync(path.join(app, 'desktop/mods-host.js')), 'quick-search 独占的文件该删');
-    assert.ok(!fs.existsSync(path.join(app, 'desktop/mods-quick-search-preload.js')), 'quick-search 独占的文件该删');
-    ['bilibili-api.js', 'public/js/mods/loader.js', 'mods/server-api.js', 'public/quick-search.html']
-      .forEach((f) => assert.ok(fs.existsSync(path.join(app, f)), `还在用的文件被删了：${f}`));
+
+    ownAnchors.forEach((id) => {
+      const info = readAnchor(fs.readFileSync(path.join(app, byId.get(id).file), 'utf8'),
+        byId.get(id), MANIFEST.marker, MANIFEST.packVersion);
+      assert.equal(info.installed, false, `${id} 只有这一族在用，撤掉${target.id}就该撤掉它`);
+    });
+    sharedAnchors.forEach((id) => {
+      const spec = byId.get(id);
+      const info = readAnchor(fs.readFileSync(path.join(app, spec.file), 'utf8'), spec, MANIFEST.marker, MANIFEST.packVersion);
+      assert.equal(info.installed, true, `${id} 还与 ${others.map((m) => m.id).join('/')} 共用，撤了别人就瞎了`);
+      assert.equal(info.matches, true, `${id} 被改动过：应当原样留着`);
+    });
+    ownFiles.forEach((f) => assert.ok(!fs.existsSync(path.join(app, f)), `${target.id} 独占的文件该删：${f}`));
+    sharedFiles.forEach((f) => assert.ok(fs.existsSync(path.join(app, f)), `还在用的文件被删了：${f}`));
+    // 现在六族互相共用锚点，独占锚点这一支是空的；上面 ownAnchors 的断言只在将来出现
+    // 独占锚点时才会跑到 —— 这里明说，免得以后有人以为这条测试什么都没验
+    if (!ownAnchors.length) {
+      assert.ok(sharedAnchors.length > 0, '至少要真验到"共用锚点没被动"');
+    }
+
     const ledger = JSON.parse(fs.readFileSync(path.join(app, 'mods', 'installed.json'), 'utf8'));
-    assert.deepEqual(ledger.mods, ['bili-source', 'no-update', 'free-sources'], '台账要按剩下的族重写');
-    assert.equal(installer(['--path', app, '--verify', '--mod', 'bili-source']).code, 0, '剩下的族应该还验得过');
+    assert.deepEqual(ledger.mods, others.map((m) => m.id), '台账要按剩下的族重写');
+    const survivor = others[0];
+    assert.equal(installer(['--path', app, '--verify', '--mod', survivor.id]).code, 0,
+      `剩下的族应该还验得过：${installer(['--path', app, '--verify', '--mod', survivor.id]).out}`);
     assert.match(fs.readFileSync(path.join(app, 'public/js/index-loader.js'), 'utf8'), /js\/mods\/loader\.js/);
     // 族名写错不能当成"什么都没选"闷声跑下去
     const typo = installer(['--path', app, '--uninstall', '--mod', 'quick-seach', '--go']);
