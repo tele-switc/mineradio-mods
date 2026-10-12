@@ -24,10 +24,14 @@
     sendQuickSearchResults: function (payload) { return ipcRenderer.invoke('mineradio-quick-search-results', payload || {}); },
     onQuickSearchQuery: function (callback) { return bind('mineradio-quick-search-query', callback); },
     onQuickSearchCommand: function (callback) { return bind('mineradio-quick-search-command', callback); },
-    // Ctrl+H「清空与存档」：存档落在 userData 的 JSON 里，渲染层只管界面与状态捕获
+    // Ctrl+H「历史记录与存档」：存档落在 userData 的 JSON 里，渲染层只管界面与状态捕获。
+    // setLabel 是「改名」那一步（只动 label，顺序与 id 不变），2026-10-12 起新增。
     readDangerArchives: function () { return ipcRenderer.invoke('mineradio-danger-archive-read'); },
     appendDangerArchive: function (record) { return ipcRenderer.invoke('mineradio-danger-archive-append', record || {}); },
     removeDangerArchive: function (id) { return ipcRenderer.invoke('mineradio-danger-archive-remove', String(id || '')); },
+    updateDangerArchiveLabel: function (id, label) {
+      return ipcRenderer.invoke('mineradio-danger-archive-set-label', String(id || ''), String(label == null ? '' : label));
+    },
     clearDangerArchives: function () { return ipcRenderer.invoke('mineradio-danger-archive-clear'); },
     // 贴边小组件与屏幕边缘进度轨：主窗口这一侧是状态来源，两个组件窗口只是它的另一种画法
     setMiniPlayerEnabled: function (on, view) { return ipcRenderer.invoke('mineradio-mini-player-set-enabled', on === true, view || {}); },

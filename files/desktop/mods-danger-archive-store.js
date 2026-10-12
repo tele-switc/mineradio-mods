@@ -1,15 +1,22 @@
 'use strict';
 
 // ============================================================
-//  「清空前存档」的落盘层（2026-10-09 加）
+//  「状态存档」的落盘层（2026-10-09 加 · 2026-10-12 加 label 与 manual 种类）
 //
-//  mineradio-mods：这一份是从开发仓库 desktop/danger-archive-store.js 逐字搬来的，
-//  逻辑没动；userDataPath 由宿主传 app.getPath('userData')，所以文件落在
-//  %APPDATA%\Mineradio\mineradio-danger-archive.json —— 不在安装目录里，更新冲不掉。
+//  mineradio-mods：这一份是从开发仓库 desktop/danger-archive-store.js 搬来的，
+//  改了文件名前缀与下面的 kind/label；userDataPath 由宿主传 app.getPath('userData')，
+//  所以文件落在 %APPDATA%\Mineradio\mineradio-danger-archive.json —— 不在安装目录里，更新冲不掉。
+//
+//  kind 有三种：manual（用户点「存一份当前状态」）、pre-restore（恢复之前自动留的退路）、
+//  clear（2026-10-12 之前的版本里，点「一键清空」前留的那份 —— 那颗按钮已按用户要求删掉，
+//  但旧文件里可能还有这种条目，读出来照常显示，不能因为种类不认识就把整条丢掉）。
+//
+//  label 是「改名」写的用户标注（最长 60 字，可空）。它只是显示用的附加信息，
+//  不参与恢复：恢复读的永远是 state 里那三份原始字符串。
 //
 //  为什么存档放在 userData 的 JSON 文件里，而不是 localStorage：
-//   1. 这个功能要存的正是 localStorage 里那两条记录。清空就是把它们抹掉，
-//      存档如果也住在 localStorage，等于把备份和原件放在同一个会被清掉的地方。
+//   1. 这个功能要存的正是 localStorage 里那三条记录。存档如果也住在 localStorage，
+//      等于把备份和原件放在同一个会被清掉的地方。
 //   2. 渲染层的 localStorage 落在 Chromium leveldb 里，外部改不动，
 //      「清除缓存/换缓存目录」那套设置也有可能把它一起带走。
 //      放在 userData 的一个普通 JSON 文件里，卸载重装、清缓存都动不到它。
@@ -23,10 +30,14 @@ const fs = require('fs');
 const path = require('path');
 
 const DANGER_ARCHIVE_FILE = 'mineradio-danger-archive.json';
-// 单条存档 = 搜索历史（≤10 条词）+ 播放存档（队列最多 120 首，app 自己就这么截）。
-// 20 条存档实测几百 KB 到 2 MB；留 12 MB 上限，超了就从最旧的开始丢。
+// 单条存档 = 搜索历史（≤10 条词）+ 播放存档（队列最多 120 首，app 自己就这么截）
+// + 聆听统计。20 条存档实测几百 KB 到 2 MB；留 12 MB 上限，超了就从最旧的开始丢。
 const DANGER_ARCHIVE_MAX_BYTES = 12 * 1024 * 1024;
 const DANGER_ARCHIVE_MAX_ITEMS = 20;
+const DANGER_ARCHIVE_LABEL_MAX = 60;
+// 认的三个种类。clear 是 2026-10-12 之前「一键清空」留下的旧条目，
+// 只为准许显示与恢复而留着，新的存档不会再是它（那颗按钮删了，新入口是 manual）。
+const DANGER_ARCHIVE_KINDS = ['manual', 'pre-restore', 'clear'];
 // 存档捕获的三条记录。键名与渲染层 00-core-stores.js / 07-search.js 里的常量一致，
 // 这里写成字面量是因为主进程不该去 require 浏览器模块。
 // 口径（用户 2026-10-10 定）："回到从来没听过歌的状态，配置不变" —— 所以搜索记录、
@@ -79,11 +90,15 @@ function normalizeArchive(value, index) {
   const state = normalizeState(value.state);
   if (!Object.keys(state).length) return null;
   const createdAt = Math.max(0, Number(value.createdAt) || 0);
-  const kind = value.kind === 'pre-restore' ? 'pre-restore' : 'clear';
+  // 种类不认识（旧文件、手改的文件、以后新增的）一律退回 clear，
+  // 但条目本身要保住——它是用户唯一的备份，不能因为一个字段不在白名单就丢整条。
+  const kind = DANGER_ARCHIVE_KINDS.indexOf(String(value.kind)) >= 0 ? String(value.kind) : 'clear';
   return {
     id: String(value.id || '').slice(0, 64) || ('archive-' + createdAt + '-' + index),
     createdAt,
     kind,
+    // 「改名」写的标注，可空。只做显示，不参与恢复。
+    label: String(value.label == null ? '' : value.label).trim().slice(0, DANGER_ARCHIVE_LABEL_MAX),
     reason: String(value.reason || '').slice(0, 48),
     summary: normalizeSummary(value.summary),
     state,
@@ -216,6 +231,23 @@ class DangerArchiveStore {
     return this.write({ version: 1, archives });
   }
 
+  // 「改名」只动 label：id / createdAt / kind / state 原样留着，顺序也不变。
+  // 用 remove + append 代替会把这条挤到列表最前面，时间线就乱了，所以单独开一条通道。
+  setLabel(id, label) {
+    const read = this.read();
+    if (!read.ok) return read;
+    const target = String(id || '');
+    const text = String(label == null ? '' : label).trim().slice(0, DANGER_ARCHIVE_LABEL_MAX);
+    let hit = false;
+    const archives = read.document.archives.map((item) => {
+      if (item.id !== target) return item;
+      hit = true;
+      return Object.assign({}, item, { label: text });
+    });
+    if (!hit) return { ok: false, error: 'DANGER_ARCHIVE_NOT_FOUND', id: target };
+    return this.write({ version: 1, archives });
+  }
+
   clear() {
     return this.write({ version: 1, archives: [] });
   }
@@ -226,6 +258,8 @@ module.exports = {
   DANGER_ARCHIVE_FILE,
   DANGER_ARCHIVE_MAX_BYTES,
   DANGER_ARCHIVE_MAX_ITEMS,
+  DANGER_ARCHIVE_LABEL_MAX,
+  DANGER_ARCHIVE_KINDS,
   DANGER_ARCHIVE_STATE_KEYS,
   normalizeDocument,
   normalizeState,

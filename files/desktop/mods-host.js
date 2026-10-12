@@ -30,12 +30,15 @@ const CH = {
   close: 'mineradio-quick-search-close',
 };
 
-// Ctrl+H「清空与存档」那四个通道（名字与开发仓库一致，这样渲染层那一份模块不用改）
+// Ctrl+H「历史记录与存档」的通道。前四个名字与开发仓库一致（渲染层那一份模块不用改），
+// setLabel 是 2026-10-12 外挂版先加的：存档要能改名，而改名不能靠 remove + append，
+// 那样会把这条挤到列表最前面、时间线就乱了。
 const DA_CH = {
   read: 'mineradio-danger-archive-read',
   append: 'mineradio-danger-archive-append',
   remove: 'mineradio-danger-archive-remove',
   clear: 'mineradio-danger-archive-clear',
+  setLabel: 'mineradio-danger-archive-set-label',
 };
 
 let overlay = null;
@@ -261,7 +264,8 @@ function bindIpc() {
 function bindDangerArchiveIpc() {
   const store = dangerArchiveStore();
   if (!store) return;
-  // 四个口只认主窗口：这套东西能抹掉他的搜索记录与播放存档，不能让任何一个页面都调得动
+  // 五个口只认主窗口：这套东西能改写他的搜索记录、播放存档与聆听统计，
+  // 不能让任何一个外挂页面（浮窗、贴边组件、进度轨）都调得动
   ipcMain.handle(DA_CH.read, async (event) => {
     if (!isMainSender(event)) return { ok: false, error: 'UNTRUSTED_SENDER' };
     const res = store.read();
@@ -280,12 +284,18 @@ function bindDangerArchiveIpc() {
     const res = store.remove(String(id || ''));
     return res.ok ? { ok: true, archives: res.document.archives } : res;
   });
+  // 改名：只动 label 一个字段，顺序与 id 都不变（所以不能用 remove + append 顶替）
+  ipcMain.handle(DA_CH.setLabel, async (event, id, label) => {
+    if (!isMainSender(event)) return { ok: false, error: 'UNTRUSTED_SENDER' };
+    const res = store.setLabel(String(id || ''), String(label == null ? '' : label));
+    return res.ok ? { ok: true, archives: res.document.archives } : res;
+  });
   ipcMain.handle(DA_CH.clear, async (event) => {
     if (!isMainSender(event)) return { ok: false, error: 'UNTRUSTED_SENDER' };
     const res = store.clear();
     return res.ok ? { ok: true, archives: res.document.archives } : res;
   });
-  log('清空与存档（Ctrl+H）的落盘通道已就位：' + store.filePath);
+  log('历史记录与存档（Ctrl+H）的落盘通道已就位：' + store.filePath);
 }
 
 function bindWindowTracking() {

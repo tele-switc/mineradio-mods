@@ -618,85 +618,187 @@ try {
     !!adopted && adopted.playing && adopted.provider === 'bilibili' && !!adopted.bvid,
     adopted ? `现在播「${adopted.name}」bvid=${adopted.bvid} · ${adopted.src} · 说明：${adopted.notice || '（没留提示卡）'}` : '（没观察到换源）');
 
-  // ---- Ctrl+H 一键清空与存档 ----
-  // 这一段跑在最后：它真的要抹掉这个实例的搜索记录/播放队列/聆听统计，
+  // ---- Ctrl+H 历史记录与状态存档 ----
+  // 这一段跑在最后：它真的要改这个实例的搜索记录与聆听记录（恢复那一条还会覆盖队列），
   // 用的是临时 userData，绝不碰你日常那份。
+  // 2026-10-12 起界面上没有密码门也没有「一键清空」，所以这两处改成断言"它们不在"，
+  // 防止哪天又被谁加回来；产生存档的那一步换成「存一份当前状态」（只存不清）。
   const daSnap = async () => JSON.parse(await main.ev(`(function(){
     var m=document.getElementById('danger-archive-modal');
+    var text=function(sel){var n=document.querySelector(sel);return n?(n.textContent||'').replace(/\\s+/g,' ').trim().slice(0,46):'';};
+    var items=function(key){ try { var r=JSON.parse(localStorage.getItem(key)||'[]'); if(Array.isArray(r)) return r; return Array.isArray(r.items)?r.items:[]; } catch(e){ return null; } };
+    var stats=(function(){ try { return JSON.parse(localStorage.getItem('mineradio-listen-stats-v1')||'{}'); } catch(e){ return {}; } })();
+    var hist=items('mineradio-search-history');
     return JSON.stringify({
       modal: !!m,
       shown: !!(m && m.classList.contains('show')),
-      unlocked: !!(m && m.classList.contains('unlocked')),
-      items: document.querySelectorAll('.danger-archive-item').length,
-      status: (document.getElementById('danger-archive-status')||{}).textContent || '',
-      note: (document.getElementById('danger-archive-note')||{}).textContent || '',
-      history: (function () {
-        // 上游的清空是把键写成空列表（{"version":1,"items":[]}）而不是删掉键，
-        // 所以这里数的是"还剩几条"，不是"还剩几个字节"
-        try {
-          var raw = JSON.parse(localStorage.getItem('mineradio-search-history') || '[]');
-          if (Array.isArray(raw)) return raw.length;
-          return (raw && Array.isArray(raw.items)) ? raw.items.length : 0;
-        } catch (e) { return -1; }
-      })(),
+      onArchive: !!(m && m.classList.contains('page-archive')),
+      style: !!document.querySelector('link[data-mineradio-mods="danger-archive"]'),
+      entryBtn: !!document.getElementById('danger-archive-history-btn'),
+      hasPassword: !!document.getElementById('danger-archive-password'),
+      hasClearAll: !!document.querySelector('.danger-archive-clear-all'),
+      searchRows: document.querySelectorAll('[data-danger-archive-history-del^="search:"]').length,
+      listenRows: document.querySelectorAll('[data-danger-archive-history-del^="listen:"]').length,
+      archiveRows: document.querySelectorAll('#danger-archive-list .danger-archive-item[data-danger-archive-id]').length,
+      snapshotBtn: !!document.querySelector('.danger-archive-snapshot'),
+      confirmBtn: !!document.querySelector('#danger-archive-list .danger-archive-del.is-confirm'),
+      editing: !!document.querySelector('[data-danger-archive-rename-input]'),
+      firstKind: text('#danger-archive-list .danger-archive-item-kind'),
+      firstSong: text('#danger-archive-list .danger-archive-item-song'),
+      history: hist ? hist.length : -1,
+      historyFirst: hist && hist[0] ? String(hist[0]).slice(0, 46) : '',
       playback: (localStorage.getItem('mineradio-last-playback-v1') || '').length,
       stats: (localStorage.getItem('mineradio-listen-stats-v1') || '').length,
+      listenHist: Array.isArray(stats.history) ? stats.history.length : -1,
+      listenSongs: stats.songs && typeof stats.songs==='object' ? Object.keys(stats.songs).length : -1,
       queue: (typeof playQueue!=='undefined'&&playQueue)?playQueue.length:-1,
       current: (typeof currentCoverSong==='function'&&currentCoverSong())?(currentCoverSong().name||''):'',
-      paused: !!(typeof audio!=='undefined'&&audio&&audio.paused),
-      style: !!document.querySelector('link[data-mineradio-mods="danger-archive"]')
+      paused: !!(typeof audio!=='undefined'&&audio&&audio.paused)
     });})()`));
+  const daStore = async () => JSON.parse(await main.ev(`window.desktopMods.readDangerArchives()
+    .then(function(r){ return JSON.stringify({ ok: !!r.ok, n: (r.archives||[]).length, label: (r.archives&&r.archives[0]&&r.archives[0].label)||'', kind: (r.archives&&r.archives[0]&&r.archives[0].kind)||'', file: r.file||'', error: r.error||'' }); })`));
   const seeded = await daSnap();
-  check('模态框与样式都注入成功（上游 index.html/index.css 里没有这两处）',
-    seeded.modal && seeded.style, `modal=${seeded.modal} css=${seeded.style}`);
-  check('清空前先有东西可清（前面几步真搜过真播过）',
+  check('模态框、样式与入口按钮都注入成功（上游 index.html / index.css 里没有这三处）',
+    seeded.modal && seeded.style && seeded.entryBtn, `modal=${seeded.modal} css=${seeded.style} 按钮=${seeded.entryBtn}`);
+  check('界面上没有密码框、也没有「一键清空」（2026-10-12 按用户要求删掉的两处）',
+    !seeded.hasPassword && !seeded.hasClearAll, `密码框=${seeded.hasPassword} 清空钮=${seeded.hasClearAll}`);
+  check('进这一段前先有东西可编辑（前面几步真搜过真播过）',
     seeded.history > 0 && seeded.queue > 0, `搜索记录 ${seeded.history} 条 · 队列 ${seeded.queue} 首`);
 
   await main.ev(`(function(){var i=document.getElementById('search-input'); if(i) i.blur();})()`);
   await main.press(KEY.CtrlH);
   await sleep(800);
-  const gated = await daSnap();
-  check('按 Ctrl+H 弹出密码门，未解锁时不写明用途',
-    gated.shown && !gated.unlocked, `unlocked=${gated.unlocked}`);
-  await main.ev(`(function(){var i=document.getElementById('danger-archive-password'); i.value=''; i.focus();})()`);
-  await main.send('Input.insertText', { text: 'duibuqi' });
+  const byHotkey = await daSnap();
+  check('按 Ctrl+H 直接打开「历史」页签，不再问密码',
+    byHotkey.shown && !byHotkey.onArchive && byHotkey.searchRows > 0 && byHotkey.listenRows >= 0,
+    `shown=${byHotkey.shown} 存档页=${byHotkey.onArchive} 搜索行 ${byHotkey.searchRows} · 聆听行 ${byHotkey.listenRows}`);
+
+  await main.press(KEY.Esc);
+  await sleep(450);
+  const escClosed = await daSnap();
+  check('Esc 把面板关掉', !escClosed.shown, `shown=${escClosed.shown}`);
+  await main.ev(`(function(){var b=document.getElementById('danger-archive-history-btn'); if(b) b.click();})()`);
+  await sleep(650);
+  const byButton = await daSnap();
+  check('那排桌面按钮里的「历史」那颗也能打开同一个面板',
+    byButton.shown && byButton.searchRows > 0, `搜索行 ${byButton.searchRows} 颗按钮在=${byButton.entryBtn}`);
+
+  const newWord = 'check改名' + (Date.now() % 100000);
+  await main.ev(`(function(){var b=document.querySelector('[data-danger-archive-rename="search:0"]'); if(b) b.click();})()`);
+  await sleep(450);
+  const editing = await daSnap();
+  check('点一行就是进入改名（行上出现输入框，不是直接触发什么）', editing.editing, `editing=${editing.editing}`);
+  await main.ev(`(function(){var i=document.querySelector('[data-danger-archive-rename-input]'); if(i){ i.value=''; i.focus(); }})()`);
+  await main.send('Input.insertText', { text: newWord });
+  await sleep(250);
   await main.press(KEY.Enter);
-  await sleep(500);
-  const wrong = await daSnap();
-  check('密码不对不给进，并且把错了几次说出来',
-    wrong.shown && !wrong.unlocked && /密码不对/.test(wrong.status), wrong.status);
-  await main.ev(`(function(){var i=document.getElementById('danger-archive-password'); i.value=''; i.focus();})()`);
-  await main.send('Input.insertText', { text: 'mineradio' });
+  await sleep(650);
+  const renamed = await daSnap();
+  check('搜索记录改名：回车即保存，条数不变（只动点的那一条）',
+    renamed.historyFirst === newWord && renamed.history === seeded.history && !renamed.editing,
+    `头一条现在是「${renamed.historyFirst}」，还是 ${renamed.history} 条`);
+
+  const secondWord = String(await main.ev(`(function(){try{var r=JSON.parse(localStorage.getItem('mineradio-search-history')||'[]');var a=Array.isArray(r)?r:(r&&r.items)||[];return String(a[1]||'');}catch(e){return '';}})()`));
+  await main.ev(`(function(){var b=document.querySelector('[data-danger-archive-history-del="search:0"]'); if(b) b.click();})()`);
+  await sleep(650);
+  const afterDel = await daSnap();
+  check('搜索记录删一条：只少一条，第二条原样留着（没有"一把清空"）',
+    afterDel.history === seeded.history - 1 && (!secondWord || afterDel.historyFirst === secondWord),
+    `${seeded.history} → ${afterDel.history} 条，头一条「${afterDel.historyFirst}」`);
+
+  const beforeListen = await daSnap();
+  await main.ev(`(function(){var b=document.querySelector('[data-danger-archive-history-del="listen:0"]'); if(b) b.click();})()`);
+  await sleep(700);
+  const afterListen = await daSnap();
+  check('聆听记录删一条：历史少一行，累计统计（songs）没被牵连',
+    beforeListen.listenHist > 0 && afterListen.listenHist === beforeListen.listenHist - 1
+      && afterListen.listenSongs === beforeListen.listenSongs && afterListen.listenRows === afterListen.listenHist,
+    `history ${beforeListen.listenHist} → ${afterListen.listenHist} 行 · songs 还是 ${afterListen.listenSongs} 首`);
+
+  await main.ev(`(function(){var b=document.querySelector('[data-danger-archive-tab="archive"]'); if(b) b.click();})()`);
+  await sleep(1000);
+  const onArchive = await daSnap();
+  const storeBefore = await daStore();
+  check('页签切到「存档」：历史页收起来，那颗只存不清的按钮在',
+    onArchive.onArchive && onArchive.shown && onArchive.snapshotBtn, `已有 ${onArchive.archiveRows} 条 · 文件里 ${storeBefore.n} 条`);
+
+  await main.ev(`(function(){var b=document.querySelector('.danger-archive-snapshot'); if(b) b.click();})()`);
+  await sleep(1500);
+  const stored = await daSnap();
+  const storeAfter = await daStore();
+  const fileNorm = String(storeAfter.file || '').replace(/\\/g, '/');
+  check('「存一份当前状态」什么都不清：存完 localStorage 那三条与队列都还在',
+    stored.history > 0 && stored.playback > 0 && stored.stats > 0 && stored.queue > 0,
+    `搜索 ${stored.history} 条 · 播放存档 ${stored.playback} 字节 · 统计 ${stored.stats} 字节 · 队列 ${stored.queue} 首`);
+  check('存的这份写在 userData 而不是 resources/app 下面（软件更新冲不掉）',
+    storeAfter.ok && storeAfter.n === storeBefore.n + 1 && /mineradio-danger-archive\.json$/.test(fileNorm)
+      && fileNorm.indexOf('resources/app') < 0,
+    `列表 ${stored.archiveRows} 条 · 文件里 ${storeAfter.n} 条 · ${fileNorm || storeAfter.error}`);
+  check('新那条标的是「手动」（不是老版本那个清空前）',
+    /手动/.test(stored.firstKind) && storeAfter.kind === 'manual', stored.firstKind + ' / ' + storeAfter.kind);
+
+  // 存档页里这些选择器必须限定在 #danger-archive-list 内：历史页与存档页都留在 DOM 里，
+  // 只靠 display 切显隐。写成 .danger-archive-item-wrap [data-danger-archive-rename] 会先命中
+  // 隐藏那一页的搜索记录行 —— 实测点下去改的是搜索记录，界面上一眼看上去却"什么都没发生"，
+  // 于是一条断言失败连带后面四条在面板关着的状态下点空。
+  const labelWord = 'check标注' + (Date.now() % 100000);
+  await main.ev(`(function(){var b=document.querySelector('#danger-archive-list [data-danger-archive-rename]'); if(b) b.click();})()`);
+  await sleep(450);
+  await main.ev(`(function(){var i=document.querySelector('[data-danger-archive-rename-input]'); if(i){ i.value=''; i.focus(); }})()`);
+  await main.send('Input.insertText', { text: labelWord });
+  await sleep(250);
   await main.press(KEY.Enter);
   await sleep(900);
-  const unlocked = await daSnap();
-  check('密码对了，面板切成「每次清空前的存档」', unlocked.unlocked, `已有 ${unlocked.items} 条存档`);
+  const labeled = await daSnap();
+  const labelRead = await daStore();
+  check('存档改名：写进 userData 那份文件，界面上那条也带上了名字',
+    labeled.shown && labeled.onArchive && labelRead.label === labelWord && labeled.firstSong.indexOf(labelWord) >= 0,
+    `文件 label=「${labelRead.label}」 行上「${labeled.firstSong}」`);
 
-  await main.ev(`(function(){var b=document.querySelector('.danger-archive-clear-all'); if(b) b.click();})()`);
-  await sleep(1600);
-  const cleared = await daSnap();
-  check('一键清空真的回到"从来没听过歌"：三条记录都没了、队列空了、正在播的也停了',
-    cleared.history === 0 && cleared.playback === 0 && cleared.stats === 0
-      && cleared.queue === 0 && cleared.paused && !cleared.current,
-    `搜索记录还剩 ${cleared.history} 条 / 播放存档 ${cleared.playback} 字节 / 统计 ${cleared.stats} 字节；队列 ${cleared.queue} 首，paused=${cleared.paused}`);
-  const archived = await daSnap();
-  const daRead = JSON.parse(await main.ev(`window.desktopMods.readDangerArchives()
-    .then(function(r){ return JSON.stringify({ ok: !!r.ok, n: (r.archives||[]).length, file: r.file||'', error: r.error||'' }); })`));
-  const fileNorm = String(daRead.file || '').replace(/\\/g, '/');
-  check('清空前先存了一份，且这份活在 userData 而不是安装目录里（更新冲不掉）',
-    archived.items >= 1 && daRead.ok && /mineradio-danger-archive\.json$/.test(fileNorm)
-      && fileNorm.indexOf('resources/app') < 0,
-    `列表 ${archived.items} 条 · 读回 ${daRead.n} 条 · ${fileNorm || daRead.error}`);
+  await main.press(KEY.Esc);
+  await sleep(400);
+  await main.ev(`(function(){var b=document.getElementById('danger-archive-history-btn'); if(b) b.click();})()`);
+  await sleep(700);
+  await main.ev(`(function(){var b=document.querySelector('[data-danger-archive-tab="archive"]'); if(b) b.click();})()`);
+  await sleep(1000);
+  const reopened = await daSnap();
+  check('关掉再重开面板，改过的名字还在（不是只活在内存里）',
+    reopened.shown && reopened.onArchive && reopened.firstSong.indexOf(labelWord) >= 0,
+    `shown=${reopened.shown} 页签=${reopened.onArchive ? 'archive' : reopened.page} 行上「${reopened.firstSong}」`);
 
-  await main.ev(`(function(){var it=document.querySelector('.danger-archive-item'); if(it) it.click();})()`);
-  await sleep(2000);
+  const beforeRestore = await daSnap();
+  const disturbWord = 'check改动' + (Date.now() % 100000);
+  await main.ev(`(function(){try{var r=JSON.parse(localStorage.getItem('mineradio-search-history')||'[]');var a=Array.isArray(r)?r:(r&&r.items)||[];a.unshift('${disturbWord}');localStorage.setItem('mineradio-search-history',JSON.stringify({version:3,items:a}));}catch(e){}})()`);
+  await main.ev(`(function(){var it=document.querySelector('#danger-archive-list .danger-archive-item[data-danger-archive-id]'); if(it) it.click();})()`);
+  await sleep(2600);
   const restored = await daSnap();
-  check('点那条存档，整个软件回到清空前：搜索记录、播放列表、当前曲目都回来了',
-    restored.history > 0 && restored.queue > 0 && !!restored.current,
-    `搜索记录 ${restored.history} 条、队列 ${restored.queue} 首、当前「${restored.current}」`);
-  check('恢复完模态自己收掉，而那条存档还在列表里（可以反复回到那一刻）',
-    await main.ev(`(function(){var m=document.getElementById('danger-archive-modal');return m && !m.classList.contains('show') ? 1:0;})()`) === 1
-      && restored.items >= 1, `${restored.items} 条存档`);
+  const restoreRead = await daStore();
+  check('点那条存档，整个软件回到存下那一刻：搜索记录、队列、当前曲目都回来了',
+    restored.history === beforeRestore.history && restored.historyFirst !== disturbWord
+      && restored.queue > 0 && !!restored.current,
+    `搜索记录回到 ${restored.history} 条（头一条「${restored.historyFirst}」）· 队列 ${restored.queue} 首 · 正在显示「${restored.current}」`);
+  check('恢复完面板自己收掉，并先留了一条「恢复前」退路',
+    !restored.shown && restoreRead.n === beforeRestore.archiveRows + 1,
+    `存档 ${beforeRestore.archiveRows} → ${restoreRead.n} 条`);
+
+  const delTarget = restored.archiveRows;
+  await main.ev(`(function(){var b=document.getElementById('danger-archive-history-btn'); if(b) b.click();})()`);
+  await sleep(700);
+  await main.ev(`(function(){var b=document.querySelector('[data-danger-archive-tab="archive"]'); if(b) b.click();})()`);
+  await sleep(1000);
+  await main.ev(`(function(){var b=document.querySelector('#danger-archive-list .danger-archive-del'); if(b) b.click();})()`);
+  await sleep(500);
+  const pendingDel = await daSnap();
+  check('删存档第一步只把它标成"待确认"，条数一条没少',
+    pendingDel.confirmBtn && pendingDel.archiveRows === delTarget, `确认态=${pendingDel.confirmBtn} · 还是 ${pendingDel.archiveRows} 条`);
+  await main.ev(`(function(){var b=document.querySelector('#danger-archive-list .danger-archive-del.is-confirm'); if(b) b.click();})()`);
+  await sleep(1100);
+  const deleted = await daSnap();
+  const deleteRead = await daStore();
+  check('第二步点「确认删除」才真删：列表与 userData 文件一起少一条',
+    deleted.archiveRows === delTarget - 1 && deleteRead.n === delTarget - 1,
+    `${delTarget} → ${deleted.archiveRows} 条 · 文件 ${deleteRead.n} 条`);
+
 } catch (e) {
   console.error('[live-check 异常] ' + ((e && e.stack) || e));
   results.push({ name: '异常', ok: false });

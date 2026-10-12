@@ -148,7 +148,7 @@
     },
     {
       "id": "danger-archive",
-      "title": "Ctrl+H 一键清空与存档（密码门 → 清空搜索记录/播放列表/聆听统计 → 每次清空前存一份，点一条整个回到那一刻）",
+      "title": "Ctrl+H 历史记录与状态存档（点按钮或按 Ctrl+H 直接打开，没有密码门也没有一键清空；历史页逐条改名与删除、存档页存一份当前状态并整份回到那一刻）",
       "enabled": true,
       "anchors": ["renderer-modules", "main-process", "preload-main"],
       "files": [
@@ -158,7 +158,7 @@
         { "from": "files/public/js/mods/30-danger-archive.js", "to": "public/js/mods/30-danger-archive.js" },
         { "from": "files/public/css/mods-danger-archive.css", "to": "public/css/mods-danger-archive.css" }
       ],
-      "note": "模态框与样式都是运行时注入的（上游 index.html 那 41 行全是独立新增节点、index.css 那一段全是新选择器，注入完全等效），存档落在 %APPDATA%\\Mineradio\\mineradio-danger-archive.json：它备份的正是 localStorage 里那三条，放同一个抽屉等于没备份。密码是 mineradio，写在源码里，防的是误触不是外人。"
+      "note": "面板两个页签：「历史」= 搜索记录（上游 ≤10 条）与聆听记录（上游 ≤180 条），逐条改名、逐条删除，没有一把抹光的入口；「存档」= 状态快照，点一条整个回到那一刻，恢复前自动留一份 pre-restore 退路。2026-10-12 按用户要求删掉了密码门与「一键清空」，随之补了「存一份当前状态」这颗 —— 原先清空是**唯一**产生存档的触发点，不补这颗存档页会永远是空的。改名走第五个 IPC 通道 set-label（只动 label 字段，不用 remove+append，否则时间线会乱）。模态框与样式都是运行时注入的（上游 index.html / index.css 一个字不动），入口那颗「历史」按钮同法注入到 .desktop-mode-btn 那一排。存档落在 %APPDATA%\\Mineradio\\mineradio-danger-archive.json：它备份的正是 localStorage 里那三条，放同一个抽屉等于没备份。"
     },
     {
       "id": "edge-widgets",

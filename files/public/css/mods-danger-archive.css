@@ -1,14 +1,17 @@
 /* ============================================================
-   清空与存档（Ctrl+H）的样式 —— mineradio-mods 外挂注入用
+   历史记录与状态存档（Ctrl+H / 那排按钮里的「历史」）的样式 —— mineradio-mods 外挂注入用
 
-   从开发仓库 public/css/index.css 里逐条搬过来，只这一族的选择器，
-   上游 index.css 里没有这些类名，也不需要知道；材质与配色全部用上游
-   已有的 token（--glass-bg / --champagne / --source-netease / --home-accent
-   / --font-mono），不引入新色相。
+   2026-10-12 改版：密码门（.danger-archive-gate）与「一键清空」那颗（.danger-archive-clear-all）
+   连同它们的样式一起删掉了 —— 界面上不再有"一把抹光"的入口，也就不需要那种玫瑰红的危险
+   配色和"未解锁时连标题都不给看"的显隐把戏。新增的是页签、逐条改名的输入行、
+   「存一份当前状态」那颗香槟色的按钮，以及历史条目（搜索词 / 聆听记录）的单列画法。
+
+   材质与配色全部用上游已有的 token（--glass-bg / --champagne / --source-netease
+   / --home-accent / --font-mono / --fc-accent-rgb），不引入新色相。
    ============================================================ */
 .modal.danger-archive-modal {
-  width: min(520px, 94vw);
-  max-width: min(520px, 94vw);
+  width: min(560px, 94vw);
+  max-width: min(560px, 94vw);
   padding: 24px 26px 20px;
   text-align: left;
   border-color: var(--glass-border-soft);
@@ -18,28 +21,12 @@
   box-shadow: var(--glass-shadow), 0 0 0 1px rgba(244, 210, 138, .05)
 }
 
-.danger-archive-gate {
-  display: block
-}
-
-.danger-archive-panel {
-  display: none
-}
-
-#danger-archive-modal.unlocked .danger-archive-gate {
-  display: none
-}
-
-#danger-archive-modal.unlocked .danger-archive-panel {
-  display: block
-}
-
 /* 标题单独一行：.login-panel-head > div 在作者的样式里是 display:none
    （那个头只放关闭按钮），所以标题不能塞进里头 */
 .danger-archive-title {
   display: grid;
   gap: 4px;
-  margin: 0 40px 16px 2px
+  margin: 0 40px 14px 2px
 }
 
 .danger-archive-title b {
@@ -55,47 +42,53 @@
   text-transform: uppercase
 }
 
-/* 密码门不写明用途：未解锁时标题（清空与存档 / Danger Archive · Ctrl+H）也不出现。
-   unlocked 那个类挂在遮罩 #danger-archive-modal 上，所以选择器要从遮罩往下写。
-   标题原来还兼着"把内容顶到关闭按钮下面"这件事（.login-panel-head 是绝对定位、
-   占 modal 顶部 12~41px），标题一藏密码框就顶到 × 底下了，所以补 22px 上边距。 */
-#danger-archive-modal:not(.unlocked) .danger-archive-title {
+/* ---------- 页签：历史 / 存档 ---------- */
+
+.danger-archive-tabs {
+  display: flex;
+  gap: 6px;
+  margin: 0 0 10px
+}
+
+.danger-archive-tab {
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, .1);
+  background: rgba(255, 255, 255, .035);
+  color: rgba(255, 255, 255, .5);
+  font-family: inherit;
+  font-size: 11.5px;
+  letter-spacing: .1em;
+  cursor: pointer;
+  transition: color .18s, border-color .18s, background .18s
+}
+
+.danger-archive-tab:hover {
+  color: rgba(255, 255, 255, .78);
+  border-color: rgba(var(--fc-accent-rgb), .28)
+}
+
+.danger-archive-tab.is-active {
+  color: var(--champagne);
+  border-color: rgba(244, 210, 138, .34);
+  background: rgba(244, 210, 138, .1)
+}
+
+/* 两页都留在 DOM 里，靠遮罩 #danger-archive-modal 上的 page-* 决定显示哪一页。
+   没挂任何 page 类时显示历史页（Ctrl+H 就是为它来的），所以那条规则写成 :not(.page-archive)。 */
+.danger-archive-page {
   display: none
 }
 
-#danger-archive-modal:not(.unlocked) .danger-archive-gate {
-  padding-top: 22px
+#danger-archive-modal:not(.page-archive) .danger-archive-page-history {
+  display: block
 }
 
-.danger-archive-panel .desc {
-  margin: 10px 0 0
+#danger-archive-modal.page-archive .danger-archive-page-archive {
+  display: block
 }
 
-.danger-archive-input {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 11px 14px;
-  border-radius: 12px;
-  border: 1px solid rgba(var(--fc-accent-rgb), .12);
-  background: rgba(255, 255, 255, .045);
-  color: #fff;
-  font-family: inherit;
-  font-size: 13.5px;
-  letter-spacing: .3px;
-  outline: none;
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  transition: border-color .18s, background .18s
-}
-
-.danger-archive-input::placeholder {
-  color: rgba(255, 255, 255, .22)
-}
-
-.danger-archive-input:focus {
-  border-color: rgba(244, 210, 138, .42);
-  background: rgba(255, 255, 255, .07)
-}
+/* ---------- 状态行与说明 ---------- */
 
 .danger-archive-status,
 .danger-archive-note {
@@ -111,7 +104,17 @@
   color: var(--source-netease)
 }
 
-.danger-archive-clear-all {
+.danger-archive-status.is-ok {
+  color: var(--home-accent)
+}
+
+.danger-archive-page .desc {
+  margin: 10px 0 0
+}
+
+/* ---------- 「存一份当前状态」：只存不清，所以不给危险色 ---------- */
+
+.danger-archive-snapshot {
   width: 100%;
   display: flex;
   align-items: center;
@@ -119,9 +122,9 @@
   gap: 8px;
   padding: 11px 14px;
   border-radius: 12px;
-  border: 1px solid rgba(217, 91, 103, .34);
-  background: rgba(217, 91, 103, .10);
-  color: rgba(255, 236, 236, .9);
+  border: 1px solid rgba(244, 210, 138, .28);
+  background: rgba(244, 210, 138, .07);
+  color: rgba(255, 244, 224, .9);
   font-family: inherit;
   font-size: 12.5px;
   letter-spacing: .5px;
@@ -129,28 +132,30 @@
   transition: background .18s, border-color .18s, transform .18s, box-shadow .18s
 }
 
-.danger-archive-clear-all::before {
+.danger-archive-snapshot::before {
   content: '';
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--source-netease);
-  box-shadow: 0 0 10px rgba(217, 91, 103, .55)
+  background: var(--champagne);
+  box-shadow: 0 0 10px rgba(244, 210, 138, .5)
 }
 
-.danger-archive-clear-all:hover {
-  background: rgba(217, 91, 103, .18);
-  border-color: rgba(217, 91, 103, .5);
+.danger-archive-snapshot:hover {
+  background: rgba(244, 210, 138, .13);
+  border-color: rgba(244, 210, 138, .46);
   transform: translateY(-1px);
   box-shadow: 0 10px 26px rgba(0, 0, 0, .28)
 }
 
-.danger-archive-clear-all:disabled {
+.danger-archive-snapshot:disabled {
   opacity: .42;
   cursor: not-allowed;
   transform: none;
   box-shadow: none
 }
+
+/* ---------- 列表 ---------- */
 
 .danger-archive-list-head {
   display: flex;
@@ -181,6 +186,11 @@
   padding-right: 2px
 }
 
+/* 搜索记录只有 ≤10 条，别让它把下面的聆听记录挤出可视区 */
+.danger-archive-list.is-short {
+  max-height: 22vh
+}
+
 .danger-archive-list::-webkit-scrollbar {
   width: 3px
 }
@@ -189,6 +199,8 @@
   background: rgba(255, 255, 255, .1);
   border-radius: 2px
 }
+
+/* ---------- 条目 ---------- */
 
 .danger-archive-item {
   display: grid;
@@ -213,6 +225,46 @@
   box-shadow: 0 8px 22px rgba(var(--fc-accent-rgb), .07)
 }
 
+/* 历史页那两族条目：搜索行只有名字，聆听行是"时间 + 名字 + 元信息"。
+   两行子节点数量不一样，用 grid 的话列数会打架（聆听行第三块掉到第二行去），
+   所以这一族改 flex：名字可裁切，元信息贴右，只有一块的时候也照样排得开。 */
+.danger-archive-item.is-text {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  padding: 9px 12px
+}
+
+.danger-archive-item-text {
+  grid-column: 1 / -1;
+  min-width: 0;
+  font-size: 12.5px;
+  letter-spacing: .3px;
+  color: rgba(255, 255, 255, .86);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis
+}
+
+.danger-archive-item.is-text .danger-archive-item-text {
+  flex: 0 1 auto;
+  grid-column: auto
+}
+
+.danger-archive-item.is-text .danger-archive-item-time {
+  flex: none;
+  font-size: 10.5px;
+  color: rgba(255, 255, 255, .45)
+}
+
+.danger-archive-item.is-text .danger-archive-item-main {
+  flex: 0 1 auto;
+  margin-left: auto;
+  justify-self: auto;
+  font-size: 10.5px;
+  color: rgba(255, 255, 255, .38)
+}
+
 .danger-archive-item-kind {
   padding: 2px 8px;
   border-radius: 999px;
@@ -227,6 +279,14 @@
   color: var(--home-accent);
   background: rgba(0, 245, 212, .1);
   border-color: rgba(0, 245, 212, .22)
+}
+
+/* kind=clear 是「一键清空」那个年代留下的旧条目，标成玫瑰红，
+   和现在这颗只存不清的「存一份当前状态」（manual / 香槟色）一眼分得开 */
+.danger-archive-item[data-danger-archive-kind="clear"] .danger-archive-item-kind {
+  color: rgba(255, 214, 214, .9);
+  background: rgba(217, 91, 103, .12);
+  border-color: rgba(217, 91, 103, .24)
 }
 
 .danger-archive-item-time {
@@ -256,8 +316,9 @@
   text-overflow: ellipsis
 }
 
-/* 删除按钮是行的兄弟节点（整行本身是 <button>，按钮里不能套按钮），
-   所以外面包一层 flex。待确认那一步用玫瑰红描边 + 轻微呼吸，让"这一下是真删"看得见。 */
+/* ---------- 行外操作：改名 / 删除 ----------
+   「改名」「删除」是行的兄弟节点而不是行内子节点：整行本身是个 <button>，
+   按钮里再套按钮是非法 HTML，而且点删除会被行的委托当成"恢复"。 */
 .danger-archive-item-wrap {
   display: flex;
   align-items: stretch;
@@ -269,8 +330,10 @@
   min-width: 0
 }
 
+.danger-archive-rename,
 .danger-archive-del,
-.danger-archive-del-cancel {
+.danger-archive-del-cancel,
+.danger-archive-save {
   flex: none;
   align-self: center;
   padding: 6px 9px;
@@ -286,12 +349,31 @@
   transition: color .18s, border-color .18s, background .18s
 }
 
+.danger-archive-rename:hover {
+  color: var(--champagne);
+  border-color: rgba(244, 210, 138, .4);
+  background: rgba(244, 210, 138, .1)
+}
+
+.danger-archive-save {
+  color: var(--home-accent);
+  border-color: rgba(0, 245, 212, .3);
+  background: rgba(0, 245, 212, .08)
+}
+
+.danger-archive-save:hover {
+  border-color: rgba(0, 245, 212, .5);
+  background: rgba(0, 245, 212, .14)
+}
+
 .danger-archive-del:hover {
   color: rgba(255, 236, 236, .9);
   border-color: rgba(217, 91, 103, .45);
   background: rgba(217, 91, 103, .12)
 }
 
+/* 存档是唯一一份备份，删它要两步：待确认那一步用玫瑰红描边 + 轻微呼吸，
+   让"这一下是真删"看得见。历史条目删一条不牵连别的，不给这种确认态。 */
 .danger-archive-del.is-confirm {
   color: #ffecec;
   border-color: rgba(217, 91, 103, .62);
@@ -305,15 +387,71 @@
 }
 
 @keyframes danger-archive-confirm-breathe {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(217, 91, 103, .0) }
-  50% { box-shadow: 0 0 0 3px rgba(217, 91, 103, .16) }
+
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(217, 91, 103, .0)
+  }
+
+  50% {
+    box-shadow: 0 0 0 3px rgba(217, 91, 103, .16)
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .danger-archive-del.is-confirm {
-    animation: none
+
+  .danger-archive-del.is-confirm,
+  .danger-archive-item,
+  .danger-archive-snapshot {
+    animation: none;
+    transition: none
   }
 }
+
+/* ---------- 改名中的那一行 ----------
+   输入框的 value 是渲染完之后用 DOM 属性塞进去的：上游那个 escHtml 是
+   textContent → innerHTML，只转义 & < >，不转义引号，歌名里有 " 就会把
+   HTML 属性拼断。这里只管画它。 */
+.danger-archive-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 11px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(var(--fc-accent-rgb), .12);
+  background: rgba(255, 255, 255, .045);
+  color: #fff;
+  font-family: inherit;
+  font-size: 13.5px;
+  letter-spacing: .3px;
+  outline: none;
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  transition: border-color .18s, background .18s
+}
+
+.danger-archive-input::placeholder {
+  color: rgba(255, 255, 255, .22)
+}
+
+.danger-archive-input:focus {
+  border-color: rgba(244, 210, 138, .42);
+  background: rgba(255, 255, 255, .07)
+}
+
+.danger-archive-item-wrap.is-editing {
+  align-items: center;
+  padding: 2px 0
+}
+
+.danger-archive-rename-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  border-radius: 10px
+}
+
+/* ---------- 空列表 ---------- */
 
 .danger-archive-empty {
   padding: 14px 2px;
