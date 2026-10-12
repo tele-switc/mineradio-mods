@@ -25,7 +25,7 @@
 | Ctrl+H 清空与存档 | `main.js` 的 `dangerArchiveStore` + 两个 ipcMain 通道；`20-danger-archive.js`；`index.html` 的 modal 节点 | 主进程侧 `require('.../desktop/danger-archive-store.js')` 在宿主里建实例；modal 用 DOM 注入；模块直接放 `files/public/js/modules/05-playback/20-danger-archive.js` 由 `loader.js` 装载 | `danger-archive-store.js`、`20-danger-archive.js` | 清空口径（回到从来没听过歌）依赖上游的存档函数，都要在包装里调 |
 | 关掉自动更新 | ✅ 已搬完：`mods/server-api.js` 里接管 `/api/update/latest` 与 `/api/update/(download|patch)*` | 锚点 `server-routes`（已有），**不改 `package.json`** | — | 上游的更新检查走它自己的后端，答"没有更新"比改配置抗更新 |
 | 托盘备用入口 | `main.js` 的 `createOrUpdateTray` | **改文件**（Tray 实例与菜单模板都是模块私有） | — | 决定放弃：软件内入口与热键都够 |
-| "关主窗口=收进后台"含浮窗 | `main.js` 的 `createWindowOnce` close 判定 | 需要第 8 个锚点；现在的替代是宿主在主窗口关闭时收起浮窗 | — | 已知限制，写在 README |
+| "关主窗口=收进后台"含浮窗 | `main.js` 的 `createWindowOnce` close 判定 | 需要第 9 个锚点；现在的替代是宿主在主窗口关闭时收起浮窗 | — | 已知限制，写在 README |
 | UI 文案 / CSS | `index.html`（+41/−0，全是独立新增节点）、`index.css`（+434/−0，全是新选择器） | DOM 注入 + 外挂 `<style>` 由 `loader.js` 插入 | — | 核过：没有任何一处"必须改 HTML/CSS 文件" |
 
 ## 搬下一个之前先做的事
