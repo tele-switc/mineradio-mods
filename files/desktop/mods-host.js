@@ -30,13 +30,60 @@ const CH = {
   close: 'mineradio-quick-search-close',
 };
 
+// Ctrl+H「清空与存档」那四个通道（名字与开发仓库一致，这样渲染层那一份模块不用改）
+const DA_CH = {
+  read: 'mineradio-danger-archive-read',
+  append: 'mineradio-danger-archive-append',
+  remove: 'mineradio-danger-archive-remove',
+  clear: 'mineradio-danger-archive-clear',
+};
+
 let overlay = null;
 let overlayShownAt = 0;
 let mainWindowContents = null;
 let hotkey = process.env.MINERADIO_MODS_HOTKEY || 'CommandOrControl+Space';
+let dangerStore = null;
+let widgets = null;
+
+// 贴边组件与边缘进度轨的宿主（第四个、第五个外挂窗口）。拿不到上游的 mainWindow 变量，
+// 所以把"主窗口是谁"与"页面地址怎么拼"这两件事作为上下文递过去。
+function widgetHost() {
+  if (widgets !== null) return widgets;
+  try {
+    const create = require('./mods-widget-host.js');
+    widgets = create({
+      getMainContents: () => (mainWindowContents && !mainWindowContents.isDestroyed() ? mainWindowContents : null),
+      overlayUrl,
+      isMainSender,
+      log,
+      warn,
+    });
+    widgets.bind();
+  } catch (e) {
+    if (e && e.code === 'MODULE_NOT_FOUND') log('没投放贴边组件那一族，跳过（mods-widget-host.js 不在）');
+    else warn('贴边组件宿主装载失败：' + ((e && e.message) || e));
+    widgets = false;
+  }
+  return widgets;
+}
 
 function log(...args) { console.log(MARK, ...args); }
 function warn(...args) { console.warn(MARK, ...args); }
+
+// 存档必须活在 localStorage 之外：它备份的正是 localStorage 里那三条记录，
+// 放在同一个地方等于把钥匙和锁放同一个抽屉。路径用 userData（不是安装目录），
+// 软件更新把 resources/app 整份换掉也动不到它。
+function dangerArchiveStore() {
+  if (dangerStore !== null) return dangerStore;
+  try {
+    const { DangerArchiveStore } = require('./mods-danger-archive-store.js');
+    dangerStore = new DangerArchiveStore({ userDataPath: app.getPath('userData') });
+  } catch (e) {
+    warn('存档落盘层没就位，Ctrl+H 那一族会退回浏览器兜底存储：' + ((e && e.message) || e));
+    dangerStore = false;
+  }
+  return dangerStore;
+}
 
 function isOverlaySender(event) {
   try {
@@ -208,6 +255,37 @@ function bindIpc() {
     }
     return { ok: forwardToMain(CH.command, { action, song }) };
   });
+  bindDangerArchiveIpc();
+}
+
+function bindDangerArchiveIpc() {
+  const store = dangerArchiveStore();
+  if (!store) return;
+  // 四个口只认主窗口：这套东西能抹掉他的搜索记录与播放存档，不能让任何一个页面都调得动
+  ipcMain.handle(DA_CH.read, async (event) => {
+    if (!isMainSender(event)) return { ok: false, error: 'UNTRUSTED_SENDER' };
+    const res = store.read();
+    return res.ok ? { ok: true, archives: res.document.archives, file: res.file } : res;
+  });
+  ipcMain.handle(DA_CH.append, async (event, record) => {
+    if (!isMainSender(event)) return { ok: false, error: 'UNTRUSTED_SENDER' };
+    if (!record || typeof record !== 'object' || Array.isArray(record)) return { ok: false, error: 'BAD_RECORD' };
+    const res = store.append(record);
+    return res.ok
+      ? { ok: true, archives: res.document.archives, dropped: res.dropped || [], file: res.file }
+      : res;
+  });
+  ipcMain.handle(DA_CH.remove, async (event, id) => {
+    if (!isMainSender(event)) return { ok: false, error: 'UNTRUSTED_SENDER' };
+    const res = store.remove(String(id || ''));
+    return res.ok ? { ok: true, archives: res.document.archives } : res;
+  });
+  ipcMain.handle(DA_CH.clear, async (event) => {
+    if (!isMainSender(event)) return { ok: false, error: 'UNTRUSTED_SENDER' };
+    const res = store.clear();
+    return res.ok ? { ok: true, archives: res.document.archives } : res;
+  });
+  log('清空与存档（Ctrl+H）的落盘通道已就位：' + store.filePath);
 }
 
 function bindWindowTracking() {
@@ -219,15 +297,22 @@ function bindWindowTracking() {
       if (/^http:\/\/127\.0\.0\.1:\d+\/(\?|$)/.test(url)) {
         mainWindowContents = contents;
         bindIpc();
+        widgetHost();
         registerHotkey();
       }
     });
   });
-  // 主窗口关掉时浮窗先收起来：不然一个看不见的浮窗会让进程留在后台退不掉
-  const onMainWindowClose = () => hideOverlay('main-window-closing');
+  // 主窗口关掉时浮窗与贴边组件先收起来：不然一个看不见的浮窗会让进程留在后台退不掉
+  const onMainWindowClose = () => {
+    hideOverlay('main-window-closing');
+    const w = widgetHost();
+    if (w) w.hideForMainWindowClose();
+  };
   app.on('browser-window-blur', () => { });
   app.on('before-quit', () => {
     if (overlay && !overlay.isDestroyed()) overlay.destroy();
+    const w = widgetHost();
+    if (w) w.closeAll();
     try { globalShortcut.unregisterAll(); } catch (_) { }
   });
   app.on('browser-window-created', (event, win) => {

@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="referrer" content="no-referrer">
+  <title>Mineradio Mini Player</title>
+  <style>
+    /* 沿用本体 index.css 的暗色电影感取值，避免小组件像另一个软件 */
+    :root {
+      --font-sans: "Noto Sans SC", "PingFang SC", "HarmonyOS Sans SC", "Inter", system-ui, sans-serif;
+      --font-mono: "JetBrains Mono", "SF Mono", ui-monospace, monospace;
+      --ink: #E8ECEF;
+      --muted: #8A9099;
+      --hair: rgba(38, 42, 49, .9);
+      --chrome: rgba(8, 9, 11, .72);
+      /* 兜底色；运行时由主窗口的"音域方块"配色覆盖（--accent=暖色峰值，--c-cool=冷色峰值） */
+      --accent: #f4d28a;
+      --c-cool: #33e6ff;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: transparent;
+      font-family: var(--font-sans);
+      color: var(--ink);
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    body[data-view="sliver"] .bar { opacity: 0; pointer-events: none; }
+    body[data-view="sliver"] .sliver { opacity: 1; pointer-events: auto; }
+
+    /* 展开形态 */
+    .bar {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      /* 底部留 24px 给全宽进度条 */
+      padding: 10px 12px 24px;
+      border: 1px solid var(--hair);
+      border-radius: 16px;
+      background: var(--chrome);
+      backdrop-filter: blur(18px) saturate(150%);
+      -webkit-app-region: drag;
+      transition: opacity .16s ease;
+    }
+
+    .cover {
+      position: relative;
+      flex: 0 0 auto;
+      width: 62px;
+      height: 62px;
+      border-radius: 11px;
+      overflow: hidden;
+      background: #121418;
+      border: 1px solid var(--hair);
+    }
+
+    .cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+    .cover .mark {
+      position: absolute;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-mono);
+      font-size: 20px;
+      letter-spacing: -.04em;
+      color: #3c414a;
+    }
+
+    .cover.no-cover img { display: none; }
+    .cover.no-cover .mark { display: flex; }
+
+    .stack { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+
+    .lines { display: flex; flex-direction: column; gap: 1px; }
+    .title {
+      font-size: 13px;
+      font-weight: 600;
+      line-height: 1.3;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .artist {
+      font-size: 11px;
+      line-height: 1.3;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* 进度条横跨组件全宽：贴边小窗里 inline 挤进文案行会被压成几像素，实测不可拖 */
+    .scrub {
+      position: absolute;
+      left: 12px;
+      right: 12px;
+      bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      -webkit-app-region: no-drag;
+    }
+
+    .time {
+      flex: 0 0 auto;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+      min-width: 30px;
+    }
+
+    .time-right { text-align: right; }
+
+    /* 命中区比可见轨道高，贴边小窗里手指好点 */
+    .track {
+      position: relative;
+      flex: 1 1 auto;
+      min-width: 60px;
+      height: 14px;
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+      touch-action: none;
+    }
+
+    .rail {
+      position: absolute;
+      left: 0; right: 0;
+      height: 3px;
+      border-radius: 3px;
+      background: rgba(232, 236, 239, .16);
+    }
+
+    .fill {
+      position: absolute;
+      left: 0;
+      height: 3px;
+      border-radius: 3px;
+      width: 0%;
+      background: linear-gradient(90deg, var(--c-cool), var(--accent));
+    }
+
+    .knob {
+      position: absolute;
+      width: 9px; height: 9px;
+      margin-left: -4.5px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 55%, transparent);
+      opacity: 0;
+      transition: opacity .14s ease;
+    }
+
+    .track:hover .knob, .track.dragging .knob { opacity: 1; }
+    .track.dragging .fill { height: 5px; }
+
+    .controls {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      -webkit-app-region: no-drag;
+    }
+
+    button {
+      width: 30px; height: 30px;
+      display: grid;
+      place-items: center;
+      border: 0;
+      border-radius: 9px;
+      background: transparent;
+      color: var(--ink);
+      cursor: pointer;
+      opacity: .82;
+      transition: background .14s ease, opacity .14s ease, transform .1s ease;
+    }
+
+    button:hover { background: rgba(232, 236, 239, .09); opacity: 1; }
+    button:active { transform: scale(.94); }
+    button svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    button.primary { width: 34px; height: 34px; opacity: 1; }
+    button.primary svg { width: 17px; height: 17px; }
+    button.primary.playing svg { fill: currentColor; stroke: none; }
+    button.tiny { width: 22px; height: 22px; opacity: .45; }
+    button.tiny svg { width: 11px; height: 11px; }
+    button.tiny.on { opacity: 1; color: var(--accent); }
+
+    .vol { position: relative; }
+    .vol .badge {
+      position: absolute;
+      right: 0; bottom: -1px;
+      font-family: var(--font-mono);
+      font-size: 8px;
+      color: var(--muted);
+    }
+
+    /* 收起形态：贴在屏边的一条窄带，鼠标上去或点一下就展开 */
+    .sliver {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .16s ease;
+      -webkit-app-region: no-drag;
+      cursor: pointer;
+    }
+
+    .sliver i {
+      width: 3px;
+      height: 46%;
+      border-radius: 3px;
+      background: var(--accent);
+      opacity: .5;
+      transition: height .16s ease, opacity .16s ease;
+    }
+
+    .sliver:hover i { height: 74%; opacity: 1; }
+
+    body.idle .bar { opacity: .55; }
+  </style>
+</head>
+
+<body data-view="bar">
+  <div class="bar" id="bar">
+    <div class="cover no-cover" id="cover">
+      <img id="cover-img" alt="" decoding="async">
+      <span class="mark">MR</span>
+    </div>
+
+    <div class="stack">
+      <div class="lines">
+        <div class="title" id="title">未在播放</div>
+        <div class="artist" id="artist">Mineradio 贴边控制台</div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button type="button" id="btn-prev" title="上一首" aria-label="上一首">
+        <svg viewBox="0 0 24 24"><path d="M5 5v14M9 12l8-6v12z"></path></svg>
+      </button>
+      <button type="button" class="primary" id="btn-play" title="播放/暂停" aria-label="播放/暂停">
+        <svg viewBox="0 0 24 24" id="icon-play"><path d="M8 5l11 7-11 7z"></path></svg>
+      </button>
+      <button type="button" id="btn-next" title="下一首" aria-label="下一首">
+        <svg viewBox="0 0 24 24"><path d="M19 5v14M15 12L7 6v12z"></path></svg>
+      </button>
+      <button type="button" class="vol" id="btn-vol" title="音量（滚轮调节）" aria-label="音量">
+        <svg viewBox="0 0 24 24"><path d="M4 9h3l5-4v14l-5-4H4z"></path><path d="M17 8.5a4.5 4.5 0 0 1 0 7"></path></svg>
+        <span class="badge" id="vol-badge">70</span>
+      </button>
+      <button type="button" class="tiny" id="btn-pin" title="保持展开" aria-label="保持展开">
+        <svg viewBox="0 0 24 24"><path d="M12 3v8M8 11h8l-1 4H9z"></path><path d="M12 15v6"></path></svg>
+      </button>
+      <button type="button" class="tiny" id="btn-close" title="关闭小组件" aria-label="关闭小组件">
+        <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+      </button>
+    </div>
+
+    <div class="scrub">
+      <span class="time" id="t-cur">0:00</span>
+      <div class="track" id="track" role="slider" aria-label="播放进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" tabindex="0">
+        <div class="rail"></div>
+        <div class="fill" id="fill"></div>
+        <div class="knob" id="knob"></div>
+      </div>
+      <span class="time time-right" id="t-dur">0:00</span>
+    </div>
+  </div>
+
+  <div class="sliver" id="sliver" title="展开 Mineradio 控制台"><i></i></div>
+
+  <script>
+    'use strict';
+
+    var overlay = window.desktopOverlay || {};
+    var el = {
+      body: document.body,
+      cover: document.getElementById('cover'),
+      coverImg: document.getElementById('cover-img'),
+      title: document.getElementById('title'),
+      artist: document.getElementById('artist'),
+      track: document.getElementById('track'),
+      fill: document.getElementById('fill'),
+      knob: document.getElementById('knob'),
+      cur: document.getElementById('t-cur'),
+      dur: document.getElementById('t-dur'),
+      play: document.getElementById('btn-play'),
+      pin: document.getElementById('btn-pin'),
+    };
+
+    var PLAY_ICON = '<path d="M8 5l11 7-11 7z"></path>';
+    // 暂停图标必须是实心矩形：.playing 状态下 CSS 用 fill 且关掉 stroke，
+    // 零宽线段（M9 5v14）没有填充面积，会直接画不出来
+    var PAUSE_ICON = '<path d="M8 5h3.2v14H8zM12.8 5H16v14h-3.2z"></path>';
+
+    // 主进程 500ms 推一次；中间用本地时钟补齐，进度条才不会一格一格跳
+    var clock = { position: 0, duration: 0, playing: false, at: 0 };
+    var dragging = false;
+    var dragRatio = 0;
+    var view = { collapsed: false, pinned: false };
+    var volume = 0.7;
+    var idleTimer = null;
+    var hoverCount = 0;
+
+    function clamp01(n) {
+      n = Number(n);
+      return Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0;
+    }
+
+    function clockText(sec) {
+      sec = Math.max(0, Math.floor(Number(sec) || 0));
+      return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
+    }
+
+    function estimatedPosition() {
+      if (dragging) return dragRatio * (clock.duration || 0);
+      var advanced = clock.position;
+      if (clock.playing) {
+        advanced += (Date.now() - clock.at) / 1000;
+      }
+      return clock.duration > 0 ? Math.min(advanced, clock.duration) : advanced;
+    }
+
+    function paintProgress() {
+      var pos = estimatedPosition();
+      var ratio = clock.duration > 0 ? clamp01(pos / clock.duration) : 0;
+      var pct = (ratio * 100).toFixed(2) + '%';
+      el.fill.style.width = pct;
+      el.knob.style.left = pct;
+      el.cur.textContent = clockText(dragging ? dragRatio * (clock.duration || 0) : pos);
+      el.dur.textContent = clockText(clock.duration);
+    }
+
+    function command(action, value) {
+      if (typeof overlay.miniPlayerCommand !== 'function') return;
+      Promise.resolve(overlay.miniPlayerCommand(action, value)).catch(function () {});
+    }
+
+    // 展开/收起以窗口真实宽度为唯一真相：消息与 setBounds 的先后顺序会交错，
+    // 只信消息会出现"窗口还是窄条、界面却已展开"的失步（实测出现过）
+    function syncViewFromWindow() {
+      var collapsedNow = window.innerWidth <= 80;
+      var changed = collapsedNow !== view.collapsed;
+      if (changed) view.collapsed = collapsedNow;
+      el.body.dataset.view = view.collapsed ? 'sliver' : 'bar';
+      // 主进程改了几何（贴边唤回、换边、固定）也要把闲置收起计时重新起算一次，
+      // 否则页面里早就排好的那个计时器会在展开之后照着旧时刻把它收回去
+      if (changed) armAutoCollapse();
+    }
+
+    function setView(next) {
+      view = Object.assign({}, view, next || {});
+      el.body.dataset.view = view.collapsed ? 'sliver' : 'bar';
+      // 每次显式切换视图都要取消待触发的自动收起，否则后台计时器会在刚展开后把它收回去
+      armAutoCollapse();
+      if (typeof overlay.miniPlayerSetView === 'function') {
+        Promise.resolve(overlay.miniPlayerSetView({
+          collapsed: !!view.collapsed,
+          pinned: !!view.pinned,
+        })).catch(function () {});
+      }
+    }
+
+    window.addEventListener('resize', syncViewFromWindow);
+
+    var HEX = /^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
+
+    function safeHex(value, fallback) {
+      var s = String(value == null ? '' : value).trim();
+      return HEX.test(s) ? s : fallback;
+    }
+
+    // 组件颜色跟着主舞台的音域方块走：暖色峰值当主色，冷色峰值做进度条起点。
+    // 主进程已经按同一套规则过滤过一轮，这里是 CSS 落点前的第二道。
+    function applyAccent(accent) {
+      var a = accent && typeof accent === 'object' ? accent : {};
+      var root = document.documentElement.style;
+      root.setProperty('--accent', safeHex(a.warm, '#f4d28a'));
+      root.setProperty('--c-cool', safeHex(a.cool, '#33e6ff'));
+    }
+
+    function applyState(state) {
+      if (!state || typeof state !== 'object') return;
+      applyAccent(state.accent);
+      var pinChanged = false;
+      if (typeof state.pinned === 'boolean' && state.pinned !== view.pinned) {
+        view.pinned = state.pinned;
+        pinChanged = true;
+      }
+      syncViewFromWindow();
+      // 取消固定后要重新起算闲置计时，否则它一直停在展开态再也不会收回贴边进度条
+      if (pinChanged) armAutoCollapse();
+      el.pin.classList.toggle('on', !!view.pinned);
+
+      clock.position = Number(state.positionSec) || 0;
+      clock.duration = Number(state.durationSec) || 0;
+      clock.playing = !!state.playing;
+      clock.at = Date.now();
+
+      el.title.textContent = state.title || '未在播放';
+      el.title.title = state.title || '';
+      el.artist.textContent = state.artist || (state.title ? '' : 'Mineradio 贴边控制台');
+      el.play.classList.toggle('playing', !!state.playing);
+      el.play.querySelector('svg').innerHTML = state.playing ? PAUSE_ICON : PLAY_ICON;
+      el.play.title = state.playing ? '暂停' : '播放';
+
+      if (Number.isFinite(Number(state.volume))) {
+        volume = clamp01(Number(state.volume));
+        // 角标要跟随主程序推来的真实音量，不能只在自己滚轮调节时更新
+        el.volBadge.textContent = Math.round(volume * 100);
+      }
+      el.cur.parentElement.style.opacity = clock.duration > 0 ? '1' : '.45';
+      var url = String(state.cover || '');
+      el.coverImg.src = url;
+      el.cover.classList.toggle('no-cover', !url);
+      paintProgress();
+    }
+
+    /* 进度条交互：按下只画预览，松手才真正 seek，避免拖动途中反复打断解码 */
+    function ratioFromEvent(evt) {
+      var rect = el.track.getBoundingClientRect();
+      if (!rect.width) return 0;
+      return clamp01((evt.clientX - rect.left) / rect.width);
+    }
+
+    el.track.addEventListener('pointerdown', function (evt) {
+      if (clock.duration <= 0) return;
+      dragging = true;
+      dragRatio = ratioFromEvent(evt);
+      el.track.classList.add('dragging');
+      // 捕获失败（指针已失效/合成事件）时不能让后面的绘制被异常吞掉
+      try { el.track.setPointerCapture(evt.pointerId); } catch (e) { /* 走 window 兜底 */ }
+      paintProgress();
+      evt.preventDefault();
+    });
+
+    // 移动与抬起挂在 window 上：即使没拿到指针捕获，拖出轨道 14px 高度也不丢事件
+    window.addEventListener('pointermove', function (evt) {
+      if (!dragging) return;
+      dragRatio = ratioFromEvent(evt);
+      paintProgress();
+    });
+
+    el.track.addEventListener('pointermove', function (evt) {
+      if (!dragging) return;
+      dragRatio = ratioFromEvent(evt);
+      paintProgress();
+    });
+
+    function endDrag(evt) {
+      if (!dragging) return;
+      dragging = false;
+      el.track.classList.remove('dragging');
+      if (evt && typeof el.track.releasePointerCapture === 'function' && el.track.hasPointerCapture(evt.pointerId)) {
+        el.track.releasePointerCapture(evt.pointerId);
+      }
+      command('seek', dragRatio);
+      clock.position = dragRatio * clock.duration;
+      clock.at = Date.now();
+      paintProgress();
+    }
+
+    el.track.addEventListener('pointerup', endDrag);
+    window.addEventListener('pointerup', endDrag);
+    window.addEventListener('pointercancel', cancelDrag);
+
+    function cancelDrag() {
+      if (!dragging) return;
+      dragging = false;
+      el.track.classList.remove('dragging');
+      paintProgress();
+    }
+
+    el.play.addEventListener('click', function () { command('toggle'); });
+    document.getElementById('btn-next').addEventListener('click', function () { command('next'); });
+    document.getElementById('btn-prev').addEventListener('click', function () { command('prev'); });
+    document.getElementById('btn-close').addEventListener('click', function () {
+      if (typeof overlay.miniPlayerClose === 'function') {
+        Promise.resolve(overlay.miniPlayerClose()).catch(function () {});
+      }
+    });
+
+    el.pin.addEventListener('click', function () {
+      setView({ pinned: !view.pinned });
+      armAutoCollapse();
+    });
+
+    /* 滚轮调音量：贴边小窗塞不下一条滑杆，滚轮比拖动更省地方 */
+    function changeVolume(delta) {
+      volume = clamp01(volume + delta);
+      el.volBadge.textContent = Math.round(volume * 100);
+      command('volume', volume);
+    }
+    var volBtn = document.getElementById('btn-vol');
+    el.volBadge = document.getElementById('vol-badge');
+    volBtn.addEventListener('wheel', function (evt) {
+      evt.preventDefault();
+      changeVolume(evt.deltaY < 0 ? 0.05 : -0.05);
+    }, { passive: false });
+    volBtn.addEventListener('click', function () {
+      changeVolume(volume > 0 ? -volume : 0.7);
+    });
+
+    /* 自动收起：鼠标离开一会儿后缩成贴边窄条，固定开关可以按住不放 */
+    function armAutoCollapse() {
+      if (idleTimer) clearTimeout(idleTimer);
+      if (view.pinned || view.collapsed) return;
+      idleTimer = setTimeout(function () {
+        if (!hoverCount && !dragging) setView({ collapsed: true });
+      }, 2200);
+    }
+
+    ['pointerenter', 'pointermove'].forEach(function (type) {
+      document.getElementById('bar').addEventListener(type, function () {
+        hoverCount++;
+        if (view.collapsed && !dragging) setView({ collapsed: false });
+        armAutoCollapse();
+      });
+    });
+
+    document.getElementById('bar').addEventListener('pointerleave', function () {
+      hoverCount = 0;
+      armAutoCollapse();
+    });
+
+    document.getElementById('sliver').addEventListener('click', function () {
+      hoverCount++;
+      setView({ collapsed: false });
+    });
+    document.getElementById('sliver').addEventListener('pointerenter', function () {
+      // 窄条上停留同样算"鼠标在组件内"，否则刚展开就会被计时器收回去
+      hoverCount++;
+      setView({ collapsed: false });
+    });
+    document.getElementById('sliver').addEventListener('pointerleave', function () {
+      hoverCount = 0;
+      armAutoCollapse();
+    });
+
+    // 点封面或点歌名 = 回到主界面（组件和主程序是一体的：组件是它在桌面上的脸）
+    function bindBackToMain(node) {
+      if (!node) return;
+      node.title = '回到 Mineradio 主界面';
+      node.style.cursor = 'zoom-in';
+      node.addEventListener('click', function (evt) {
+        evt.stopPropagation();
+        command('focus-main');
+      });
+    }
+    bindBackToMain(document.getElementById('cover'));
+    bindBackToMain(document.querySelector('.lines'));
+
+    if (typeof overlay.onMiniPlayerState === 'function') {
+      overlay.onMiniPlayerState(applyState);
+    }
+
+    // 只有真在播放时才做插值重绘，暂停状态下不空转
+    setInterval(function () {
+      if (clock.playing || dragging) paintProgress();
+    }, 120);
+
+    syncViewFromWindow();
+    armAutoCollapse();
+  </script>
+</body>
+
+</html>

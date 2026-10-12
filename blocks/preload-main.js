@@ -24,5 +24,18 @@
     sendQuickSearchResults: function (payload) { return ipcRenderer.invoke('mineradio-quick-search-results', payload || {}); },
     onQuickSearchQuery: function (callback) { return bind('mineradio-quick-search-query', callback); },
     onQuickSearchCommand: function (callback) { return bind('mineradio-quick-search-command', callback); },
+    // Ctrl+H「清空与存档」：存档落在 userData 的 JSON 里，渲染层只管界面与状态捕获
+    readDangerArchives: function () { return ipcRenderer.invoke('mineradio-danger-archive-read'); },
+    appendDangerArchive: function (record) { return ipcRenderer.invoke('mineradio-danger-archive-append', record || {}); },
+    removeDangerArchive: function (id) { return ipcRenderer.invoke('mineradio-danger-archive-remove', String(id || '')); },
+    clearDangerArchives: function () { return ipcRenderer.invoke('mineradio-danger-archive-clear'); },
+    // 贴边小组件与屏幕边缘进度轨：主窗口这一侧是状态来源，两个组件窗口只是它的另一种画法
+    setMiniPlayerEnabled: function (on, view) { return ipcRenderer.invoke('mineradio-mini-player-set-enabled', on === true, view || {}); },
+    updateMiniPlayer: function (payload) { return ipcRenderer.invoke('mineradio-mini-player-update', payload || {}); },
+    setMiniPlayerView: function (view) { return ipcRenderer.invoke('mineradio-mini-player-set-view', view || {}); },
+    updateEdgeRail: function (payload) { return ipcRenderer.invoke('mineradio-edge-rail-update', payload || {}); },
+    onMiniPlayerCommand: function (callback) { return bind('mineradio-mini-player-command', callback); },
+    onMiniPlayerEnabledState: function (callback) { return bind('mineradio-mini-player-enabled-state', callback); },
+    onEdgeRailEnabledState: function (callback) { return bind('mineradio-edge-rail-enabled-state', callback); },
   });
 })();

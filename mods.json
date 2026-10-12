@@ -1,6 +1,6 @@
 {
   "pack": "mineradio-mods",
-  "packVersion": "0.1.0",
+  "packVersion": "0.2.0",
   "license": "GPL-3.0-only",
   "upstream": {
     "repo": "XxHuberrr/Mineradio",
@@ -145,6 +145,48 @@
         { "from": "files/public/quick-search.html", "to": "public/quick-search.html" }
       ],
       "note": "两个都免登录、无会话、不需要 API key。IA 一行 = archive.org 的一个条目（常为整张专辑/整场演出），实际播哪个文件由后端按音质档过一遍 Chromium 可播性白名单再挑；RP 是 320k AAC 连续直播，没有单曲与同步歌词，All 档里不掺它（只在自己的档位出现）"
+    },
+    {
+      "id": "danger-archive",
+      "title": "Ctrl+H 一键清空与存档（密码门 → 清空搜索记录/播放列表/聆听统计 → 每次清空前存一份，点一条整个回到那一刻）",
+      "enabled": true,
+      "anchors": ["renderer-modules", "main-process", "preload-main"],
+      "files": [
+        { "from": "files/desktop/mods-host.js", "to": "desktop/mods-host.js" },
+        { "from": "files/desktop/mods-danger-archive-store.js", "to": "desktop/mods-danger-archive-store.js" },
+        { "from": "files/public/js/mods/loader.js", "to": "public/js/mods/loader.js" },
+        { "from": "files/public/js/mods/30-danger-archive.js", "to": "public/js/mods/30-danger-archive.js" },
+        { "from": "files/public/css/mods-danger-archive.css", "to": "public/css/mods-danger-archive.css" }
+      ],
+      "note": "模态框与样式都是运行时注入的（上游 index.html 那 41 行全是独立新增节点、index.css 那一段全是新选择器，注入完全等效），存档落在 %APPDATA%\\Mineradio\\mineradio-danger-archive.json：它备份的正是 localStorage 里那三条，放同一个抽屉等于没备份。密码是 mineradio，写在源码里，防的是误触不是外人。"
+    },
+    {
+      "id": "edge-widgets",
+      "title": "贴边播放小组件 + 屏幕边缘进度轨（贴边那颗按钮 → 拖到屏边收起 → 整条边变成进度条，指针回到那条边就展开）",
+      "enabled": true,
+      "anchors": ["renderer-modules", "main-process", "preload-main"],
+      "files": [
+        { "from": "files/desktop/mods-host.js", "to": "desktop/mods-host.js" },
+        { "from": "files/desktop/mods-widget-host.js", "to": "desktop/mods-widget-host.js" },
+        { "from": "files/desktop/mods-widget-preload.js", "to": "desktop/mods-widget-preload.js" },
+        { "from": "files/desktop/mods-mini-player-runtime.js", "to": "desktop/mods-mini-player-runtime.js" },
+        { "from": "files/public/mini-player.html", "to": "public/mini-player.html" },
+        { "from": "files/public/edge-rail.html", "to": "public/edge-rail.html" },
+        { "from": "files/public/js/mods/loader.js", "to": "public/js/mods/loader.js" },
+        { "from": "files/public/js/mods/40-widgets.js", "to": "public/js/mods/40-widgets.js" }
+      ],
+      "note": "两个窗口都是外挂自建的（浮窗是第一先例），所以不需要新锚点。入口那颗「贴边」按钮运行时插进同一排 .desktop-mode-btn（上游 index.html 里没它）；吸附几何那份 mods-mini-player-runtime.js 不依赖 Electron，纯函数。边缘进度轨不是第二个开关：它就是小组件收到屏边的那个形态，两个窗口的显示由同一份 collapsed 派生。"
+    },
+    {
+      "id": "auto-source-fallback",
+      "title": "自动换源：当前源取不到地址时，自己去找同一首歌的另一个源（免登录那两条：网易云 → B 站）",
+      "enabled": true,
+      "anchors": ["renderer-modules"],
+      "files": [
+        { "from": "files/public/js/mods/50-provider-fallback.js", "to": "public/js/mods/50-provider-fallback.js" },
+        { "from": "files/public/js/mods/loader.js", "to": "public/js/mods/loader.js" }
+      ],
+      "note": "这一族是**整模块接管**：外挂以同名全局函数重新声明上游 11-provider-fallback.js 的那一套（不整份替换上游文件，否则 uninstall 回不到逐字节原版）。代价：上游改了这条链时 --verify 看不出来，只有真跑能发现。internetarchive / radioparadise 明确不参与自动换源（没有「同名同歌手同一录音」的可靠判据，自动接管会播错内容）；咪咕不在包里，所以免登录池子只有 netease + bilibili，「有咪咕会话就提前」那两段留在开发版没接。"
     },
     {
       "id": "migu-source",

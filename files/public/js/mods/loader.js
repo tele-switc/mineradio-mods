@@ -15,6 +15,9 @@
     'js/mods/05-sources.js',
     'js/mods/10-quick-search-host.js',
     'js/mods/20-bili-collection.js',
+    'js/mods/30-danger-archive.js',
+    'js/mods/40-widgets.js',
+    'js/mods/50-provider-fallback.js',
   ];
 
   function read(path) {
