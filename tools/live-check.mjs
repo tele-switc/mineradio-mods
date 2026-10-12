@@ -98,6 +98,15 @@ try {
     if (!ready) await sleep(700);
   }
   check('原版 + 外挂：主窗口拿到桥接 desktopMods 与外挂模块', ready);
+  if (!ready) {
+    // 这一条挂了后面全是干等（每条都要耗几十秒），直接把线索打出来退掉。
+    // 最常见的原因不是外挂坏了，而是这份夹具自己起不来：resources/app 里没有 node_modules
+    // （上游 app 有 5 个运行时依赖），后端崩了但窗口照样开 —— 所以要在这里点名。
+    const page = await main.ev(`JSON.stringify({url:location.href.slice(0,90), title:document.title,
+      body:(document.body?document.body.innerText:'').replace(/\\s+/g,' ').slice(0,140)})`).catch(() => '{}');
+    const nm = fs.existsSync(path.join(APP, 'node_modules', 'gsap'));
+    throw new Error(`主窗口没拿到外挂桥接，提前退出。页面=${page} ；resources/app/node_modules=${nm ? '有' : '没有 ← 跑 tools/link-runtime.ps1 把它链接进来'}`);
+  }
   check('B 站外挂源注册上了（__mrModsHas("bilibili")）',
     await main.ev(`window.__mrModsHas('bilibili') ? 1 : 0`) === 1);
   check('后端外挂活着（/api/bilibili/login/status 有响应）',
@@ -210,6 +219,17 @@ try {
     check('那一段真的出声（走外挂那条直链）',
       !!played && played.playing && !!played.src,
       played ? `provider=${played.provider}，src=${played.src || '空'}${played.notice ? ' · 换源提示：' + played.notice : ''}` : '（没取到播放状态）');
+    // cid 存在不等于分 P 是对的：如果每一段都拿到整条的第一个 cid，上面两条照样绿（假阳性）。
+    // 直接问 view 接口，确认头几段的 cid 互不相同。
+    const partsProbe = JSON.parse(await main.ev(`fetch('/api/bilibili/parts?bvid='
+      + encodeURIComponent(${JSON.stringify(picked.bvid || '')})).then(function(r){ return r.json(); })
+      .then(function(d){
+        var p = (d.parts || []).slice(0, 4).map(function (x) { return { cid: String(x.cid || ''), part: String(x.part || '').slice(0, 16) }; });
+        return JSON.stringify({ count: p.length, uniq: new Set(p.map(function (x) { return x.cid; }).filter(Boolean)).size,
+          sample: p.map(function (x) { return x.cid + '·' + x.part; }).join(' | ') });
+      })`));
+    check('分 P 的每一段各有自己的 cid（不是把整条第一个 cid 复制 N 遍，那样上面两条也会绿）',
+      partsProbe.count >= 2 && partsProbe.uniq === partsProbe.count, `取到 ${partsProbe.count} 段、cid 去重后 ${partsProbe.uniq} 个 · ${partsProbe.sample}`);
   }
   // ---- 贴边组件 + 屏幕边缘进度轨 ----
   // 此刻正在播 IA 那一首（时长有限），正好能测进度条与"点哪跳到哪"

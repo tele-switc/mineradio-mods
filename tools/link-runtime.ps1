@@ -46,6 +46,22 @@ if (Test-Path (Join-Path $src 'locales')) {
 if (Test-Path $app) { Remove-Item $app -Recurse -Force }
 Copy-Item -Path $fixture -Destination $app -Recurse -Force
 
+# resources/app 还得要有 node_modules：上游 app 有 5 个运行时依赖
+# （gsap / mpg123-decoder / music-metadata / NeteaseCloudMusicApi / qrcode），
+# 缺了它后端直接崩 —— 窗口会开，但页面永远拿不到外挂桥接，
+# live-check 只能干等到超时（改成"真复制 resources/app"之后这一步漏过一回，实测踩过）。
+# 与运行时文件同一个思路：链接过来，不复制那 300MB。
+$nmDst = Join-Path $app 'node_modules'
+if (Test-Path $nmDst) {
+  $nmIsLink = (Get-Item $nmDst).Attributes -band [IO.FileAttributes]::ReparsePoint
+  if ($nmIsLink) { cmd /c rmdir "$nmDst" | Out-Null } else { Remove-Item $nmDst -Recurse -Force }
+}
+$nmSrc = if ($env:MINERADIO_NODE_MODULES) { $env:MINERADIO_NODE_MODULES } else { Join-Path $dev 'node_modules' }
+if (-not (Test-Path (Join-Path $nmSrc 'gsap'))) {
+  throw "找不到上游的运行时依赖目录：$nmSrc（里面应当有 gsap；用 MINERADIO_NODE_MODULES 指到装好依赖的那份）"
+}
+New-Item -ItemType Junction -Path $nmDst -Target $nmSrc | Out-Null
+
 Write-Output ("runtime files: " + (Get-ChildItem $dst -File).Count)
 Write-Output ("app files: " + (Get-ChildItem $app -File -Recurse).Count)
 Write-Output ("exe: " + (Test-Path (Join-Path $dst 'Mineradio.exe')))
