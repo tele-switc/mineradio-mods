@@ -19,6 +19,7 @@
     'js/mods/40-widgets.js',
     'js/mods/50-provider-fallback.js',
     'js/mods/60-taste-profile.js',
+    'js/mods/70-netease-supercharged.js',
   ];
 
   function read(path) {

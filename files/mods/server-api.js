@@ -2,10 +2,22 @@
 //  mineradio-mods 后端外挂（上游 server.js 里只加了三行指向这里）
 //
 //  这一层负责：
-//   - /api/bilibili/*      搜索、分 P（合集）、取址、歌词、会话
+//   - /api/bilibili/*         搜索、分 P（合集）、取址、歌词、会话
 //   - /api/internetarchive/*  archive.org 公开音频：搜索、取址、歌词
 //   - /api/radioparadise/*    RP 直播电台：频道、当关键词搜索、取流、正在播放、歌词
-//   - 音频代理的两个补丁：B 站直链要带 Referer，DASH 的 mp4a 要报对 Content-Type
+//   - 网易云超级增强与双擎日推：
+//       /api/feed/super-daily         网易云日推 × 汽水推荐引擎双擎融合
+//       /api/personal_fm              私人 FM 漫游推流
+//       /api/fm_trash                 私人 FM 垃圾桶（不再推荐）
+//       /api/playmode/intelligence/*  心动模式智能推荐曲目
+//       /api/song/similar             相似歌曲推荐
+//       /api/user/cloud               音乐云盘 / 本地私有仓
+//       /api/user/cloud/del           删除云盘歌曲
+//       /api/toplist & /detail        官方排行榜
+//       /api/user/record              用户听歌排行
+//       /api/record/recent/song       最近播放歌曲
+//       /api/artist/songs & /albums   歌手单曲与专辑
+//   - 音频代理的补丁：B 站直链 Referer，DASH mp4a / IA opus / RP AAC 正确 Content-Type
 //
 //  会话（cookie）放在 ~/.mineradio/bili-cookie —— 故意不放安装目录：
 //  软件更新会把 resources/app 整个换掉，放那儿等于每次更新都要重新登录一次。
@@ -45,6 +57,14 @@ function loadRp() {
   return rp;
 }
 
+// 网易云 API 支持
+let ncm = null;
+function loadNcm() {
+  if (ncm !== null) return ncm;
+  try { ncm = require('NeteaseCloudMusicApi'); } catch (e) { console.warn(MARK, 'NeteaseCloudMusicApi 没就位：' + e.message); ncm = false; }
+  return ncm;
+}
+
 function readCookie() {
   try {
     const api = loadBili();
@@ -58,6 +78,40 @@ function writeCookie(raw) {
   fs.writeFileSync(COOKIE_FILE, String(raw || ''), { mode: 0o600 });
   const api = loadBili();
   if (api && api.clearBiliSessionCaches) api.clearBiliSessionCaches();
+}
+
+function readNeteaseCookie() {
+  try {
+    const p1 = path.join(__dirname, '..', '.cookie');
+    if (fs.existsSync(p1)) return fs.readFileSync(p1, 'utf8').trim();
+    const p2 = path.join(os.homedir(), '.mineradio', 'cookie');
+    if (fs.existsSync(p2)) return fs.readFileSync(p2, 'utf8').trim();
+  } catch (_) {}
+  return '';
+}
+
+function mapNcmSong(raw) {
+  if (!raw) return null;
+  const s = raw.song || raw.simpleSong || raw;
+  const id = s.id || raw.id || raw.songId;
+  if (!id) return null;
+  const ar = s.ar || s.artists || raw.artists;
+  const artist = (Array.isArray(ar) && ar.length)
+    ? ar.map(a => a && a.name).filter(Boolean).join(' / ')
+    : (s.artist || raw.artist || '未知歌手');
+  const al = s.al || s.album || raw.album || {};
+  const albumName = (typeof al === 'object' && al !== null ? al.name : al) || raw.album || s.album || '未知专辑';
+  const cover = (al && al.picUrl) || raw.picUrl || raw.cover || s.cover || '';
+  return {
+    provider: 'netease',
+    id: Number(id),
+    name: s.name || raw.name || raw.songName || raw.fileName || '未知曲目',
+    artist: artist || '未知歌手',
+    album: albumName || '未知专辑',
+    cover: cover || '',
+    duration: s.dt || s.duration || raw.duration || 0,
+    playable: true,
+  };
 }
 
 function sendJSON(res, body, status) {
@@ -314,6 +368,403 @@ async function handleRpRoute(res, url, pn) {
   return false;
 }
 
+// ---- 网易云超级增强与双擎日推漫游 ----
+async function handleNeteaseRoute(req, res, url, pn) {
+  const ncmApi = loadNcm();
+  if (!ncmApi) {
+    sendJSON(res, { success: false, error: 'NCM_API_MISSING', tracks: [] }, 500);
+    return true;
+  }
+  const cookie = readNeteaseCookie();
+
+  // 1. 双擎日推与刷视频推荐流（网易云日推 + 汽水音乐推荐引擎）
+  if (pn === '/api/feed/super-daily') {
+    try {
+      const mode = url.searchParams.get('mode') || 'hybrid';
+      const tasks = [];
+
+      const neteaseTask = (async () => {
+        try {
+          if (cookie && ncmApi.recommend_songs) {
+            const rec = await ncmApi.recommend_songs({ cookie, timestamp: Date.now() });
+            const body = rec.body || rec || {};
+            const raw = (body.data && (body.data.dailySongs || body.data.recommend)) || body.recommend || [];
+            if (raw.length) {
+              return raw.map(mapNcmSong).filter(Boolean).map(s => {
+                s.feedReason = '网易云·日推精选';
+                s.reasonTag = '日推';
+                return s;
+              });
+            }
+          }
+        } catch (_) {}
+        try {
+          if (ncmApi.personalized) {
+            const rec = await ncmApi.personalized({ limit: 6, timestamp: Date.now() });
+            const plList = (rec.body && (rec.body.result || rec.body.data)) || [];
+            if (plList.length && plList[0].id && ncmApi.playlist_track_all) {
+              const tr = await ncmApi.playlist_track_all({ id: plList[0].id, limit: 16, timestamp: Date.now() });
+              const rawSongs = (tr.body && (tr.body.songs || tr.body.tracks)) || [];
+              return rawSongs.map(mapNcmSong).filter(Boolean).map(s => {
+                s.feedReason = '网易云·精选推荐';
+                s.reasonTag = '精选';
+                return s;
+              });
+            }
+          }
+        } catch (_) {}
+        return [];
+      })();
+      tasks.push(neteaseTask);
+
+      const qishuiTask = (async () => {
+        try {
+          let qishui = null;
+          try { qishui = require('../qishui-api'); } catch (_) {}
+          if (qishui && typeof qishui.handleQishuiFeed === 'function') {
+            let qCookie = '';
+            try {
+              const qPath = path.join(__dirname, '..', '.qishui-cookie');
+              if (fs.existsSync(qPath)) qCookie = fs.readFileSync(qPath, 'utf8').trim();
+            } catch (_) {}
+            const feedRes = await qishui.handleQishuiFeed(14, qCookie);
+            const raw = (feedRes && feedRes.songs) || [];
+            return raw.map(s => {
+              s.feedReason = '汽水算法·精准推流';
+              s.reasonTag = '猜你喜欢';
+              return s;
+            });
+          }
+        } catch (_) {}
+        return [];
+      })();
+      tasks.push(qishuiTask);
+
+      const [neteaseSongs, qishuiSongs] = await Promise.all(tasks);
+      const seen = new Set();
+      const combined = [];
+      const addSong = (s) => {
+        if (!s || !s.id) return;
+        const k = (String(s.name || '') + ' ' + String(s.artist || '')).toLowerCase().replace(/\s+/g, '');
+        if (seen.has(k)) return;
+        seen.add(k);
+        combined.push(s);
+      };
+
+      if (mode === 'qishui') {
+        qishuiSongs.forEach(addSong);
+        neteaseSongs.forEach(addSong);
+      } else {
+        let nIdx = 0, qIdx = 0;
+        while (nIdx < neteaseSongs.length || qIdx < qishuiSongs.length) {
+          if (nIdx < neteaseSongs.length) addSong(neteaseSongs[nIdx++]);
+          if (nIdx < neteaseSongs.length) addSong(neteaseSongs[nIdx++]);
+          if (qIdx < qishuiSongs.length) addSong(qishuiSongs[qIdx++]);
+        }
+      }
+
+      sendJSON(res, {
+        success: true,
+        mode,
+        count: combined.length,
+        tracks: combined,
+        neteaseCount: neteaseSongs.length,
+        qishuiCount: qishuiSongs.length,
+        date: new Date().toLocaleDateString('zh-CN'),
+      });
+    } catch (e) {
+      sendJSON(res, { success: false, error: String(e && e.message || e), tracks: [] }, 500);
+    }
+    return true;
+  }
+
+  // 2. 私人 FM
+  if (pn === '/api/personal_fm') {
+    try {
+      if (cookie && ncmApi.personal_fm) {
+        const fmRes = await ncmApi.personal_fm({ cookie, timestamp: Date.now() });
+        const body = fmRes.body || fmRes || {};
+        const raw = body.data || [];
+        const tracks = raw.map(mapNcmSong).filter(Boolean);
+        sendJSON(res, { success: true, tracks });
+        return true;
+      }
+      const superDailyUrl = new URL(url.toString());
+      superDailyUrl.pathname = '/api/feed/super-daily';
+      return handleNeteaseRoute(req, res, superDailyUrl, '/api/feed/super-daily');
+    } catch (e) {
+      sendJSON(res, { success: false, error: String(e && e.message || e), tracks: [] }, 500);
+      return true;
+    }
+  }
+
+  // 3. 私人 FM 垃圾桶
+  if (pn === '/api/fm_trash') {
+    try {
+      const id = url.searchParams.get('id');
+      if (cookie && id && ncmApi.fm_trash) {
+        const r = await ncmApi.fm_trash({ id, cookie, timestamp: Date.now() });
+        sendJSON(res, { success: true, id, body: (r && r.body) || r });
+      } else {
+        sendJSON(res, { success: true, id, guest: true });
+      }
+    } catch (e) {
+      sendJSON(res, { success: false, error: String(e && e.message || e) }, 500);
+    }
+    return true;
+  }
+
+  // 4. 心动模式
+  if (pn === '/api/playmode/intelligence/list') {
+    try {
+      const id = url.searchParams.get('id');
+      const pid = url.searchParams.get('pid') || 24381616;
+      if (!id) { sendJSON(res, { success: false, error: 'Missing song id', tracks: [] }, 400); return true; }
+      let rawSongs = [];
+      if (ncmApi.playmode_intelligence_list) {
+        try {
+          const intel = await ncmApi.playmode_intelligence_list({ id, pid, cookie, timestamp: Date.now() });
+          const body = intel.body || intel || {};
+          const list = body.data || body.result || [];
+          rawSongs = list.map(item => item.songInfo || item);
+        } catch (_) {}
+      }
+      const tracks = rawSongs.map(mapNcmSong).filter(Boolean);
+      sendJSON(res, { success: true, id, pid, tracks });
+    } catch (e) {
+      sendJSON(res, { success: false, error: String(e && e.message || e), tracks: [] }, 500);
+    }
+    return true;
+  }
+
+  // 5. 相似歌曲
+  if (pn === '/api/song/similar') {
+    try {
+      const id = url.searchParams.get('id');
+      if (!id) { sendJSON(res, { success: false, error: 'Missing song id', tracks: [] }, 400); return true; }
+      const fetchSimi = ncmApi['simi_' + 'song'];
+      let songs = [];
+      if (typeof fetchSimi === 'function') {
+        try {
+          const simi = await fetchSimi({ id, cookie, timestamp: Date.now() });
+          const body = simi.body || simi || {};
+          songs = (body.songs || []).map(mapNcmSong).filter(Boolean);
+        } catch (_) {}
+      }
+      sendJSON(res, { success: true, id, tracks: songs });
+    } catch (e) {
+      sendJSON(res, { success: false, error: String(e && e.message || e), tracks: [] }, 500);
+    }
+    return true;
+  }
+
+  // 6. 音乐云盘
+  if (pn === '/api/user/cloud') {
+    try {
+      if (!cookie || !ncmApi.user_cloud) {
+        sendJSON(res, {
+          success: true,
+          loggedIn: false,
+          isGuest: true,
+          count: 0,
+          tracks: [],
+          message: '未登录网易云。登录后可自动同步云盘；未登录时可直接拖入本地音乐到播放器作为本地私有仓。',
+        });
+        return true;
+      }
+      const limit = Math.max(1, Math.min(100, int(url.searchParams.get('limit'), 50)));
+      const offset = Math.max(0, int(url.searchParams.get('offset'), 0));
+      const cloudRes = await ncmApi.user_cloud({ limit, offset, cookie, timestamp: Date.now() });
+      const body = cloudRes.body || cloudRes || {};
+      const rawList = body.data || [];
+      const tracks = rawList.map(item => {
+        const s = mapNcmSong(item);
+        if (s) {
+          s.isCloud = true;
+          s.fileSize = item.fileSize || 0;
+        }
+        return s;
+      }).filter(Boolean);
+      sendJSON(res, {
+        success: true,
+        loggedIn: true,
+        count: body.count || tracks.length,
+        size: body.size || 0,
+        maxSize: body.maxSize || 0,
+        hasMore: body.hasMore !== false && rawList.length >= limit,
+        tracks,
+      });
+    } catch (e) {
+      sendJSON(res, { success: false, error: String(e && e.message || e), tracks: [] }, 500);
+    }
+    return true;
+  }
+
+  // 7. 删除云盘歌曲
+  if (pn === '/api/user/cloud/del') {
+    try {
+      const id = url.searchParams.get('id');
+      if (cookie && id && ncmApi.user_cloud_del) {
+        const delRes = await ncmApi.user_cloud_del({ id, cookie, timestamp: Date.now() });
+        sendJSON(res, { success: true, id, body: (delRes && delRes.body) || delRes });
+      } else {
+        sendJSON(res, { success: false, error: 'DELETE_FAILED' }, 400);
+      }
+    } catch (e) {
+      sendJSON(res, { success: false, error: String(e && e.message || e) }, 500);
+    }
+    return true;
+  }
+
+  // 8. 官方排行榜
+  if (pn === '/api/toplist' || pn === '/api/toplist/detail') {
+    try {
+      let list = [];
+      if (ncmApi.toplist_detail) {
+        const listRes = await ncmApi.toplist_detail({ cookie, timestamp: Date.now() });
+        const body = listRes.body || listRes || {};
+        const rawList = body.list || [];
+        list = rawList.map(item => ({
+          id: item.id,
+          name: item.name,
+          cover: item.coverImgUrl || '',
+          updateFrequency: item.updateFrequency || '',
+          playCount: item.playCount || 0,
+          trackCount: item.trackCount || 0,
+          description: item.description || '',
+          top3: (item.tracks || []).slice(0, 3).map(t => ({
+            first: t.first || '',
+            second: t.second || '',
+          })),
+        })).filter(item => item.id && item.name);
+      }
+      sendJSON(res, { success: true, total: list.length, list });
+    } catch (e) {
+      sendJSON(res, { success: false, error: String(e && e.message || e), list: [] }, 500);
+    }
+    return true;
+  }
+
+  // 9. 用户听歌排行
+  if (pn === '/api/user/record') {
+    try {
+      if (!cookie || !ncmApi.user_record) {
+        sendJSON(res, { success: true, loggedIn: false, isGuest: true, total: 0, tracks: [] });
+        return true;
+      }
+      const type = int(url.searchParams.get('type'), 1);
+      const uid = url.searchParams.get('uid') || '';
+      const recRes = await ncmApi.user_record({ uid, type, cookie, timestamp: Date.now() });
+      const body = recRes.body || recRes || {};
+      const rawList = (type === 1 ? body.weekData : body.allData) || [];
+      const tracks = rawList.map(item => {
+        const s = mapNcmSong(item.song);
+        if (s) {
+          s.playCount = item.playCount || 0;
+          s.score = item.score || 0;
+        }
+        return s;
+      }).filter(Boolean);
+      sendJSON(res, { success: true, type, total: tracks.length, tracks });
+    } catch (e) {
+      sendJSON(res, { success: false, error: String(e && e.message || e), tracks: [] }, 500);
+    }
+    return true;
+  }
+
+  // 10. 最近播放歌曲
+  if (pn === '/api/record/recent/song') {
+    try {
+      if (!cookie || !ncmApi.record_recent_song) {
+        sendJSON(res, { success: true, loggedIn: false, isGuest: true, total: 0, tracks: [] });
+        return true;
+      }
+      const limit = Math.max(1, Math.min(100, int(url.searchParams.get('limit'), 50)));
+      const recRes = await ncmApi.record_recent_song({ limit, cookie, timestamp: Date.now() });
+      const body = recRes.body || recRes || {};
+      const rawList = (body.data && body.data.list) || body.list || [];
+      const tracks = rawList.map(item => {
+        const s = mapNcmSong(item.data || item);
+        if (s) s.playTime = item.playTime || 0;
+        return s;
+      }).filter(Boolean);
+      sendJSON(res, { success: true, total: tracks.length, tracks });
+    } catch (e) {
+      sendJSON(res, { success: false, error: String(e && e.message || e), tracks: [] }, 500);
+    }
+    return true;
+  }
+
+  // 11. 歌手热门单曲与全部单曲
+  if (pn === '/api/artist/songs') {
+    try {
+      const id = url.searchParams.get('id');
+      if (!id) { sendJSON(res, { success: false, error: 'Missing artist id', songs: [] }, 400); return true; }
+      const limit = Math.max(1, Math.min(100, int(url.searchParams.get('limit'), 50)));
+      const offset = Math.max(0, int(url.searchParams.get('offset'), 0));
+      const order = url.searchParams.get('order') === 'time' ? 'time' : 'hot';
+      let songs = [];
+      let total = 0;
+      if (ncmApi.artist_songs) {
+        try {
+          const resList = await ncmApi.artist_songs({ id, order, limit, offset, cookie, timestamp: Date.now() });
+          const body = resList.body || resList || {};
+          total = body.total || 0;
+          const raw = (body.songs || (body.data && body.data.songs) || []);
+          songs = raw.map(mapNcmSong).filter(Boolean);
+        } catch (_) {}
+      }
+      if (!songs.length && offset === 0 && ncmApi.artist_top_song) {
+        try {
+          const topRes = await ncmApi.artist_top_song({ id, cookie, timestamp: Date.now() });
+          const topBody = topRes.body || topRes || {};
+          songs = (topBody.songs || []).map(mapNcmSong).filter(Boolean);
+          total = songs.length;
+        } catch (_) {}
+      }
+      sendJSON(res, { success: true, id, order, limit, offset, total, songs });
+    } catch (e) {
+      sendJSON(res, { success: false, error: String(e && e.message || e), songs: [] }, 500);
+    }
+    return true;
+  }
+
+  // 12. 歌手专辑
+  if (pn === '/api/artist/albums') {
+    try {
+      const id = url.searchParams.get('id');
+      if (!id) { sendJSON(res, { success: false, error: 'Missing artist id', albums: [] }, 400); return true; }
+      const limit = Math.max(1, Math.min(50, int(url.searchParams.get('limit'), 30)));
+      const offset = Math.max(0, int(url.searchParams.get('offset'), 0));
+      let albums = [];
+      let total = 0;
+      if (ncmApi.artist_album) {
+        try {
+          const albRes = await ncmApi.artist_album({ id, limit, offset, cookie, timestamp: Date.now() });
+          const body = albRes.body || albRes || {};
+          const rawAlbs = body.hotAlbums || body.albums || [];
+          albums = rawAlbs.map(a => ({
+            id: a.id,
+            name: a.name || '',
+            cover: a.picUrl || a.coverUrl || '',
+            publishTime: a.publishTime || 0,
+            size: a.size || 0,
+          })).filter(a => a.id && a.name);
+          total = body.total || albums.length;
+        } catch (_) {}
+      }
+      sendJSON(res, { success: true, id, total, albums });
+    } catch (e) {
+      sendJSON(res, { success: false, error: String(e && e.message || e), albums: [] }, 500);
+    }
+    return true;
+  }
+
+  return false;
+}
+
+const NETEASE_SUPERCHARGED_RE = /^\/api\/(feed\/super-daily|personal_fm|fm_trash|playmode\/intelligence\/list|song\/similar|user\/cloud(\/del)?|toplist(\/detail)?|user\/record|record\/recent\/song|artist\/(songs|albums))$/;
+
 function tryHandle(req, res, url, pn) {
   // 更新检查：原版会去 GitHub 拉 release，而作者已停更；外挂装在上面之后
   // "有新版本"其实是"更新会把外挂冲掉"。所以这里直接答"没有更新"，
@@ -332,6 +783,17 @@ function tryHandle(req, res, url, pn) {
     sendJSON(res, { ok: false, error: 'UPDATE_DISABLED_BY_MODS', externalOnly: true }, 400);
     return true;
   }
+
+  // 网易云超级增强路由（双擎日推漫游、私人FM、云盘、榜单、心动模式、相似歌曲等）
+  if (NETEASE_SUPERCHARGED_RE.test(pn)) {
+    const run = handleNeteaseRoute(req, res, url, pn);
+    run.catch((e) => {
+      console.warn(MARK, '网易云超级增强路由异常：' + ((e && e.stack) || e));
+      try { sendJSON(res, { error: String((e && e.message) || e), success: false }, 500); } catch (_) { }
+    });
+    return true;
+  }
+
   if (!/^\/api\/(bilibili|internetarchive|radioparadise)\//.test(pn)) return false;
   const run = pn.indexOf('/api/bilibili/') === 0 ? handle(req, res, url, pn)
     : pn.indexOf('/api/internetarchive/') === 0 ? handleArchiveRoute(res, url, pn)
@@ -343,4 +805,4 @@ function tryHandle(req, res, url, pn) {
   return true;
 }
 
-module.exports = { tryHandle, audioProxyHeaders, audioContentType };
+module.exports = { tryHandle, audioProxyHeaders, audioContentType, mapNcmSong, handleNeteaseRoute };

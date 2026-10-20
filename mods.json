@@ -4,7 +4,9 @@
   "license": "GPL-3.0-only",
   "upstream": {
     "repo": "XxHuberrr/Mineradio",
-    "testedAgainst": ["2.2.0"],
+    "testedAgainst": [
+      "2.2.0"
+    ],
     "baselineCommit": "d43de56",
     "note": "上游 build.asar:false —— 安装目录里 resources/app 是普通目录，所以外挂可以按文件投放"
   },
@@ -16,7 +18,9 @@
       "file": "public/js/index-loader.js",
       "mode": "array-append",
       "arrayLocator": "const modulePaths = [",
-      "block": ["'js/mods/loader.js',"],
+      "block": [
+        "'js/mods/loader.js',"
+      ],
       "blockNote": "追加到 modulePaths 末尾 = 在所有上游模块之后执行，于是能包装应用自己的全局函数"
     },
     {
@@ -97,36 +101,85 @@
       "id": "quick-search",
       "title": "Ctrl+Space 快速搜索浮窗（初屏 24 条 + 查看更多；B 站合集分段随 bili-collection 一起到位）",
       "enabled": true,
-      "anchors": ["renderer-modules", "main-process", "preload-main"],
+      "anchors": [
+        "renderer-modules",
+        "main-process",
+        "preload-main"
+      ],
       "files": [
-        { "from": "files/public/quick-search.html", "to": "public/quick-search.html" },
-        { "from": "files/public/js/mods/loader.js", "to": "public/js/mods/loader.js" },
-        { "from": "files/public/js/mods/10-quick-search-host.js", "to": "public/js/mods/10-quick-search-host.js" },
-        { "from": "files/desktop/mods-host.js", "to": "desktop/mods-host.js" },
-        { "from": "files/desktop/mods-quick-search-preload.js", "to": "desktop/mods-quick-search-preload.js" }
+        {
+          "from": "files/public/quick-search.html",
+          "to": "public/quick-search.html"
+        },
+        {
+          "from": "files/public/js/mods/loader.js",
+          "to": "public/js/mods/loader.js"
+        },
+        {
+          "from": "files/public/js/mods/10-quick-search-host.js",
+          "to": "public/js/mods/10-quick-search-host.js"
+        },
+        {
+          "from": "files/desktop/mods-host.js",
+          "to": "desktop/mods-host.js"
+        },
+        {
+          "from": "files/desktop/mods-quick-search-preload.js",
+          "to": "desktop/mods-quick-search-preload.js"
+        }
       ]
     },
     {
       "id": "bili-source",
       "title": "B 站音源（搜索 / 合集分 P / 取址 / 歌词 / 会话 + 音频代理补丁）",
       "enabled": true,
-      "anchors": ["server-routes", "server-audio-headers", "server-audio-type", "playback-gapless-url", "playback-url", "renderer-modules"],
+      "anchors": [
+        "server-routes",
+        "server-audio-headers",
+        "server-audio-type",
+        "playback-gapless-url",
+        "playback-url",
+        "renderer-modules"
+      ],
       "files": [
-        { "from": "files/bilibili-api.js", "to": "bilibili-api.js" },
-        { "from": "files/mods/server-api.js", "to": "mods/server-api.js" },
-        { "from": "files/public/js/mods/loader.js", "to": "public/js/mods/loader.js" },
-        { "from": "files/public/js/mods/05-sources.js", "to": "public/js/mods/05-sources.js" },
-        { "from": "files/public/js/mods/20-bili-collection.js", "to": "public/js/mods/20-bili-collection.js" },
-        { "from": "files/public/css/mods-bili-collection.css", "to": "public/css/mods-bili-collection.css" }
+        {
+          "from": "files/bilibili-api.js",
+          "to": "bilibili-api.js"
+        },
+        {
+          "from": "files/mods/server-api.js",
+          "to": "mods/server-api.js"
+        },
+        {
+          "from": "files/public/js/mods/loader.js",
+          "to": "public/js/mods/loader.js"
+        },
+        {
+          "from": "files/public/js/mods/05-sources.js",
+          "to": "public/js/mods/05-sources.js"
+        },
+        {
+          "from": "files/public/js/mods/20-bili-collection.js",
+          "to": "public/js/mods/20-bili-collection.js"
+        },
+        {
+          "from": "files/public/css/mods-bili-collection.css",
+          "to": "public/css/mods-bili-collection.css"
+        }
       ]
     },
     {
       "id": "no-update",
       "title": "关掉更新检查（作者已停更；升级会把 resources/app 换掉、冲掉外挂）",
       "enabled": true,
-      "anchors": ["server-routes"],
+      "anchors": [
+        "server-routes"
+      ],
       "files": [
-        { "from": "files/mods/server-api.js", "to": "mods/server-api.js" }
+        {
+          "from": "files/mods/server-api.js",
+          "to": "mods/server-api.js"
+        }
       ],
       "note": "不改 package.json 的 mineradio.update.provider，改成接管 /api/update/*：那个 JSON 一更新就回来了"
     },
@@ -134,15 +187,43 @@
       "id": "free-sources",
       "title": "免登录的两个外挂源：Internet Archive 公开音频 + Radio Paradise 直播电台",
       "enabled": true,
-      "anchors": ["server-routes", "server-audio-headers", "server-audio-type", "playback-gapless-url", "playback-url", "renderer-modules"],
+      "anchors": [
+        "server-routes",
+        "server-audio-headers",
+        "server-audio-type",
+        "playback-gapless-url",
+        "playback-url",
+        "renderer-modules"
+      ],
       "files": [
-        { "from": "files/internetarchive-api.js", "to": "internetarchive-api.js" },
-        { "from": "files/radioparadise-api.js", "to": "radioparadise-api.js" },
-        { "from": "files/mods/server-api.js", "to": "mods/server-api.js" },
-        { "from": "files/public/js/mods/loader.js", "to": "public/js/mods/loader.js" },
-        { "from": "files/public/js/mods/05-sources.js", "to": "public/js/mods/05-sources.js" },
-        { "from": "files/public/js/mods/10-quick-search-host.js", "to": "public/js/mods/10-quick-search-host.js" },
-        { "from": "files/public/quick-search.html", "to": "public/quick-search.html" }
+        {
+          "from": "files/internetarchive-api.js",
+          "to": "internetarchive-api.js"
+        },
+        {
+          "from": "files/radioparadise-api.js",
+          "to": "radioparadise-api.js"
+        },
+        {
+          "from": "files/mods/server-api.js",
+          "to": "mods/server-api.js"
+        },
+        {
+          "from": "files/public/js/mods/loader.js",
+          "to": "public/js/mods/loader.js"
+        },
+        {
+          "from": "files/public/js/mods/05-sources.js",
+          "to": "public/js/mods/05-sources.js"
+        },
+        {
+          "from": "files/public/js/mods/10-quick-search-host.js",
+          "to": "public/js/mods/10-quick-search-host.js"
+        },
+        {
+          "from": "files/public/quick-search.html",
+          "to": "public/quick-search.html"
+        }
       ],
       "note": "两个都免登录、无会话、不需要 API key。IA 一行 = archive.org 的一个条目（常为整张专辑/整场演出），实际播哪个文件由后端按音质档过一遍 Chromium 可播性白名单再挑；RP 是 320k AAC 连续直播，没有单曲与同步歌词，All 档里不掺它（只在自己的档位出现）"
     },
@@ -150,13 +231,32 @@
       "id": "danger-archive",
       "title": "Ctrl+H 历史记录与状态存档（点按钮或按 Ctrl+H 直接打开，没有密码门也没有一键清空；历史页逐条改名与删除、存档页存一份当前状态并整份回到那一刻）",
       "enabled": true,
-      "anchors": ["renderer-modules", "main-process", "preload-main"],
+      "anchors": [
+        "renderer-modules",
+        "main-process",
+        "preload-main"
+      ],
       "files": [
-        { "from": "files/desktop/mods-host.js", "to": "desktop/mods-host.js" },
-        { "from": "files/desktop/mods-danger-archive-store.js", "to": "desktop/mods-danger-archive-store.js" },
-        { "from": "files/public/js/mods/loader.js", "to": "public/js/mods/loader.js" },
-        { "from": "files/public/js/mods/30-danger-archive.js", "to": "public/js/mods/30-danger-archive.js" },
-        { "from": "files/public/css/mods-danger-archive.css", "to": "public/css/mods-danger-archive.css" }
+        {
+          "from": "files/desktop/mods-host.js",
+          "to": "desktop/mods-host.js"
+        },
+        {
+          "from": "files/desktop/mods-danger-archive-store.js",
+          "to": "desktop/mods-danger-archive-store.js"
+        },
+        {
+          "from": "files/public/js/mods/loader.js",
+          "to": "public/js/mods/loader.js"
+        },
+        {
+          "from": "files/public/js/mods/30-danger-archive.js",
+          "to": "public/js/mods/30-danger-archive.js"
+        },
+        {
+          "from": "files/public/css/mods-danger-archive.css",
+          "to": "public/css/mods-danger-archive.css"
+        }
       ],
       "note": "面板两个页签：「历史」= 搜索记录（上游 ≤10 条）与聆听记录（上游 ≤180 条），逐条改名、逐条删除，没有一把抹光的入口；「存档」= 状态快照，点一条整个回到那一刻，恢复前自动留一份 pre-restore 退路。2026-10-12 按用户要求删掉了密码门与「一键清空」，随之补了「存一份当前状态」这颗 —— 原先清空是**唯一**产生存档的触发点，不补这颗存档页会永远是空的。改名走第五个 IPC 通道 set-label（只动 label 字段，不用 remove+append，否则时间线会乱）。模态框与样式都是运行时注入的（上游 index.html / index.css 一个字不动），入口那颗「历史」按钮同法注入到 .desktop-mode-btn 那一排。存档落在 %APPDATA%\\Mineradio\\mineradio-danger-archive.json：它备份的正是 localStorage 里那三条，放同一个抽屉等于没备份。"
     },
@@ -164,16 +264,44 @@
       "id": "edge-widgets",
       "title": "贴边播放小组件 + 屏幕边缘进度轨（贴边那颗按钮 → 拖到屏边收起 → 整条边变成进度条，指针回到那条边就展开）",
       "enabled": true,
-      "anchors": ["renderer-modules", "main-process", "preload-main"],
+      "anchors": [
+        "renderer-modules",
+        "main-process",
+        "preload-main"
+      ],
       "files": [
-        { "from": "files/desktop/mods-host.js", "to": "desktop/mods-host.js" },
-        { "from": "files/desktop/mods-widget-host.js", "to": "desktop/mods-widget-host.js" },
-        { "from": "files/desktop/mods-widget-preload.js", "to": "desktop/mods-widget-preload.js" },
-        { "from": "files/desktop/mods-mini-player-runtime.js", "to": "desktop/mods-mini-player-runtime.js" },
-        { "from": "files/public/mini-player.html", "to": "public/mini-player.html" },
-        { "from": "files/public/edge-rail.html", "to": "public/edge-rail.html" },
-        { "from": "files/public/js/mods/loader.js", "to": "public/js/mods/loader.js" },
-        { "from": "files/public/js/mods/40-widgets.js", "to": "public/js/mods/40-widgets.js" }
+        {
+          "from": "files/desktop/mods-host.js",
+          "to": "desktop/mods-host.js"
+        },
+        {
+          "from": "files/desktop/mods-widget-host.js",
+          "to": "desktop/mods-widget-host.js"
+        },
+        {
+          "from": "files/desktop/mods-widget-preload.js",
+          "to": "desktop/mods-widget-preload.js"
+        },
+        {
+          "from": "files/desktop/mods-mini-player-runtime.js",
+          "to": "desktop/mods-mini-player-runtime.js"
+        },
+        {
+          "from": "files/public/mini-player.html",
+          "to": "public/mini-player.html"
+        },
+        {
+          "from": "files/public/edge-rail.html",
+          "to": "public/edge-rail.html"
+        },
+        {
+          "from": "files/public/js/mods/loader.js",
+          "to": "public/js/mods/loader.js"
+        },
+        {
+          "from": "files/public/js/mods/40-widgets.js",
+          "to": "public/js/mods/40-widgets.js"
+        }
       ],
       "note": "两个窗口都是外挂自建的（浮窗是第一先例），所以不需要新锚点。入口那颗「贴边」按钮运行时插进同一排 .desktop-mode-btn（上游 index.html 里没它）；吸附几何那份 mods-mini-player-runtime.js 不依赖 Electron，纯函数。边缘进度轨不是第二个开关：它就是小组件收到屏边的那个形态，两个窗口的显示由同一份 collapsed 派生。"
     },
@@ -181,10 +309,18 @@
       "id": "auto-source-fallback",
       "title": "自动换源：当前源取不到地址时，自己去找同一首歌的另一个源（免登录那两条：网易云 → B 站）",
       "enabled": true,
-      "anchors": ["renderer-modules"],
+      "anchors": [
+        "renderer-modules"
+      ],
       "files": [
-        { "from": "files/public/js/mods/50-provider-fallback.js", "to": "public/js/mods/50-provider-fallback.js" },
-        { "from": "files/public/js/mods/loader.js", "to": "public/js/mods/loader.js" }
+        {
+          "from": "files/public/js/mods/50-provider-fallback.js",
+          "to": "public/js/mods/50-provider-fallback.js"
+        },
+        {
+          "from": "files/public/js/mods/loader.js",
+          "to": "public/js/mods/loader.js"
+        }
       ],
       "note": "这一族是**整模块接管**：外挂以同名全局函数重新声明上游 11-provider-fallback.js 的那一套（不整份替换上游文件，否则 uninstall 回不到逐字节原版）。代价：上游改了这条链时 --verify 看不出来，只有真跑能发现。internetarchive / radioparadise 明确不参与自动换源（没有「同名同歌手同一录音」的可靠判据，自动接管会播错内容）；咪咕不在包里，所以免登录池子只有 netease + bilibili，「有咪咕会话就提前」那两段留在开发版没接。"
     },
@@ -192,25 +328,79 @@
       "id": "taste-profile",
       "title": "口味档案与搜索个性化（导入 TXT/CSV/JSON/M3U 或拉取平台歌单，搜索时同名版本优先与个性化提权）",
       "enabled": true,
-      "anchors": ["renderer-modules", "main-process", "preload-main"],
+      "anchors": [
+        "renderer-modules",
+        "main-process",
+        "preload-main"
+      ],
       "files": [
-        { "from": "files/desktop/mods-host.js", "to": "desktop/mods-host.js" },
-        { "from": "files/desktop/mods-taste-store.js", "to": "desktop/mods-taste-store.js" },
-        { "from": "files/public/js/mods/loader.js", "to": "public/js/mods/loader.js" },
-        { "from": "files/public/js/mods/60-taste-profile.js", "to": "public/js/mods/60-taste-profile.js" },
-        { "from": "files/public/css/mods-taste-profile.css", "to": "public/css/mods-taste-profile.css" },
-        { "from": "files/public/quick-search.html", "to": "public/quick-search.html" }
+        {
+          "from": "files/desktop/mods-host.js",
+          "to": "desktop/mods-host.js"
+        },
+        {
+          "from": "files/desktop/mods-taste-store.js",
+          "to": "desktop/mods-taste-store.js"
+        },
+        {
+          "from": "files/public/js/mods/loader.js",
+          "to": "public/js/mods/loader.js"
+        },
+        {
+          "from": "files/public/js/mods/60-taste-profile.js",
+          "to": "public/js/mods/60-taste-profile.js"
+        },
+        {
+          "from": "files/public/css/mods-taste-profile.css",
+          "to": "public/css/mods-taste-profile.css"
+        },
+        {
+          "from": "files/public/quick-search.html",
+          "to": "public/quick-search.html"
+        }
       ],
       "note": "个人数据三条路：本机聆听（直接用已有的 mineradio-listen-stats-v1 现算，档案里不存副本）、文件导入（TXT/CSV/JSON/M3U）、连接平台拉收藏（网易云/QQ/酷狗/汽水/Spotify）。档案独立保存在 userData 目录下的 mineradio-taste-profile.json。搜索个性化加在 merge 之后，原分数一分不改，包含同名版本优先排序与理由徽章展示；按钮与模态框通过运行时注入，原版上游文件一行不改。"
+    },
+    {
+      "id": "netease-supercharged",
+      "title": "网易云超级增强与双擎日推漫游（音乐云盘 / 私人FM带垃圾桶 / 官方排行榜 / 双擎日推刷歌漫游 / 心动模式 / 相似歌曲 / 分享链接秒识别）",
+      "enabled": true,
+      "anchors": [
+        "server-routes",
+        "renderer-modules"
+      ],
+      "files": [
+        {
+          "from": "files/mods/server-api.js",
+          "to": "mods/server-api.js"
+        },
+        {
+          "from": "files/public/js/mods/loader.js",
+          "to": "public/js/mods/loader.js"
+        },
+        {
+          "from": "files/public/js/mods/70-netease-supercharged.js",
+          "to": "public/js/mods/70-netease-supercharged.js"
+        }
+      ],
+      "note": "补齐网易云核心王牌体验（音乐云盘/本地私有仓、私人FM带垃圾桶、官方全榜单、最近播放、歌手热门与专辑下钻、心动模式与相似歌曲推荐、网易云分享链接秒识别）。双擎日推融合网易云深度品味与汽水音乐短视频信息流算法，无缝感知心流，无限刷歌漫游；未登录或游客状态优雅降级为公域精选与本地私有仓。"
     },
     {
       "id": "migu-source",
       "title": "咪咕音乐（需要会话：官方登录窗 + cookie 交给后端）",
       "enabled": false,
       "status": "待搬：本体文件已在包里，缺后端路由、REGISTRY 那一项，以及把 cookie 存到 ~/.mineradio/migu-cookie（别存安装目录，更新会没）",
-      "anchors": ["server-routes", "server-audio-headers", "server-audio-type", "playback-url"],
+      "anchors": [
+        "server-routes",
+        "server-audio-headers",
+        "server-audio-type",
+        "playback-url"
+      ],
       "files": [
-        { "from": "files/migu-api.js", "to": "migu-api.js" }
+        {
+          "from": "files/migu-api.js",
+          "to": "migu-api.js"
+        }
       ]
     }
   ]
