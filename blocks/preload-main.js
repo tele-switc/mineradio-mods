@@ -33,6 +33,10 @@
       return ipcRenderer.invoke('mineradio-danger-archive-set-label', String(id || ''), String(label == null ? '' : label));
     },
     clearDangerArchives: function () { return ipcRenderer.invoke('mineradio-danger-archive-clear'); },
+    // 口味档案（个人数据导入/连接平台收藏 → 搜索个性化与版本优先）
+    readTasteProfile: function () { return ipcRenderer.invoke('mineradio-taste-profile-read'); },
+    saveTasteProfile: function (profile) { return ipcRenderer.invoke('mineradio-taste-profile-save', profile || {}); },
+    clearTasteProfile: function () { return ipcRenderer.invoke('mineradio-taste-profile-clear'); },
     // 贴边小组件与屏幕边缘进度轨：主窗口这一侧是状态来源，两个组件窗口只是它的另一种画法
     setMiniPlayerEnabled: function (on, view) { return ipcRenderer.invoke('mineradio-mini-player-set-enabled', on === true, view || {}); },
     updateMiniPlayer: function (payload) { return ipcRenderer.invoke('mineradio-mini-player-update', payload || {}); },

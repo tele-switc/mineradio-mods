@@ -41,11 +41,19 @@ const DA_CH = {
   setLabel: 'mineradio-danger-archive-set-label',
 };
 
+// 口味档案（个人数据 → 搜索个性化）的通道
+const TASTE_CH = {
+  read: 'mineradio-taste-profile-read',
+  save: 'mineradio-taste-profile-save',
+  clear: 'mineradio-taste-profile-clear',
+};
+
 let overlay = null;
 let overlayShownAt = 0;
 let mainWindowContents = null;
 let hotkey = process.env.MINERADIO_MODS_HOTKEY || 'CommandOrControl+Space';
 let dangerStore = null;
+let tasteStore = null;
 let widgets = null;
 
 // 贴边组件与边缘进度轨的宿主（第四个、第五个外挂窗口）。拿不到上游的 mainWindow 变量，
@@ -86,6 +94,18 @@ function dangerArchiveStore() {
     dangerStore = false;
   }
   return dangerStore;
+}
+
+function tasteProfileStore() {
+  if (tasteStore !== null) return tasteStore;
+  try {
+    const { TasteProfileStore } = require('./mods-taste-store.js');
+    tasteStore = new TasteProfileStore({ userDataPath: app.getPath('userData') });
+  } catch (e) {
+    warn('口味档案落盘层没就位：' + ((e && e.message) || e));
+    tasteStore = false;
+  }
+  return tasteStore;
 }
 
 function isOverlaySender(event) {
@@ -259,6 +279,7 @@ function bindIpc() {
     return { ok: forwardToMain(CH.command, { action, song }) };
   });
   bindDangerArchiveIpc();
+  bindTasteProfileIpc();
 }
 
 function bindDangerArchiveIpc() {
@@ -296,6 +317,27 @@ function bindDangerArchiveIpc() {
     return res.ok ? { ok: true, archives: res.document.archives } : res;
   });
   log('历史记录与存档（Ctrl+H）的落盘通道已就位：' + store.filePath);
+}
+
+function bindTasteProfileIpc() {
+  const store = tasteProfileStore();
+  if (!store) return;
+  ipcMain.handle(TASTE_CH.read, async (event) => {
+    if (!isMainSender(event)) return { ok: false, error: 'UNTRUSTED_SENDER' };
+    const res = store.read();
+    return res.ok ? { ok: true, profile: res.profile, file: res.file } : res;
+  });
+  ipcMain.handle(TASTE_CH.save, async (event, profile) => {
+    if (!isMainSender(event)) return { ok: false, error: 'UNTRUSTED_SENDER' };
+    const res = store.save(profile);
+    return res.ok ? { ok: true, profile: res.profile, file: res.file } : res;
+  });
+  ipcMain.handle(TASTE_CH.clear, async (event) => {
+    if (!isMainSender(event)) return { ok: false, error: 'UNTRUSTED_SENDER' };
+    const res = store.clear();
+    return res.ok ? { ok: true, profile: res.profile, file: res.file } : res;
+  });
+  log('口味档案（搜索个性化）的落盘通道已就位：' + store.filePath);
 }
 
 function bindWindowTracking() {

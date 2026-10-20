@@ -1,0 +1,450 @@
+/* ============================================================
+   口味档案 · Taste Profile（mineradio-mods 外挂样式）
+   包含：
+   1. 搜索框内开关按钮（#taste-btn.taste-search-chip）
+   2. 搜索结果中的口味理由徽章（.tag-taste）
+   3. 口味档案模态框与面板（.modal.taste-modal 及内部组件）
+   ============================================================ */
+
+/* 口味理由徽章（60-taste-profile.js）。挂在标题行末尾：那一行是 flex + ellipsis，
+   歌名先被截、徽章不会被截。视觉口径与作者定的一致 —— 淡色块 + 一根细色条，
+   绝不做饱和填充。三种命中各一种色调，深浅都压在 6~7% 背景。 */
+.tag-taste {
+  display: inline-flex;
+  align-items: center;
+  height: 16px;
+  padding: 0 7px 0 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(244, 210, 138, .20);
+  border-left-width: 2px;
+  border-left-color: rgba(244, 210, 138, .58);
+  background: rgba(244, 210, 138, .065);
+  color: rgba(244, 210, 138, .86);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: .2px;
+  line-height: 1;
+  flex-shrink: 0;
+  max-width: 172px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis
+}
+
+.tag-taste.artist {
+  border-color: rgba(150, 220, 205, .20);
+  border-left-color: rgba(150, 220, 205, .56);
+  background: rgba(150, 220, 205, .06);
+  color: rgba(190, 236, 222, .84)
+}
+
+.tag-taste.title {
+  border-color: rgba(255, 255, 255, .12);
+  border-left-color: rgba(255, 255, 255, .30);
+  background: rgba(255, 255, 255, .05);
+  color: rgba(255, 255, 255, .58)
+}
+
+/* 搜索框里那颗口味开关。简约模式（默认）把 #upload-actions 整簇藏了，
+   所以它必须待在 #search-box 这个两种模式都在的容器里。
+   开着 = 香槟描边 + 淡底；关着 = 灰到几乎看不见，一眼能分辨现在生不生效。 */
+#taste-btn.taste-search-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  margin-left: 8px;
+  padding: 0 10px 0 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, .10);
+  background: rgba(255, 255, 255, .035);
+  color: rgba(255, 255, 255, .38);
+  font-family: inherit;
+  font-size: 10.5px;
+  letter-spacing: .04em;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all .24s
+}
+
+#taste-btn.taste-search-chip:hover {
+  color: rgba(255, 255, 255, .78);
+  border-color: rgba(255, 255, 255, .22)
+}
+
+#taste-btn.taste-search-chip.active {
+  color: rgba(244, 210, 138, .9);
+  border-color: rgba(244, 210, 138, .34);
+  background: rgba(244, 210, 138, .07)
+}
+
+#taste-btn.taste-search-chip svg {
+  flex-shrink: 0
+}
+
+/* ============================================================
+   口味档案 · Taste Profile 模态框与面板
+   ============================================================ */
+.modal.taste-modal {
+  width: min(620px, 94vw);
+  max-width: min(620px, 94vw);
+  padding: 24px 26px 20px;
+  text-align: left;
+  border-color: var(--glass-border-soft);
+  background: var(--glass-bg), linear-gradient(180deg, rgba(20, 20, 23, .94), rgba(10, 10, 12, .93));
+  backdrop-filter: blur(46px) saturate(1.36);
+  -webkit-backdrop-filter: blur(46px) saturate(1.36);
+  box-shadow: var(--glass-shadow), 0 0 0 1px rgba(244, 210, 138, .05)
+}
+
+/* .login-panel-head 绝对定位占 modal 顶部 12~41px，
+   标题给它让开 40px 右边距，内容不会被 × 压住 */
+.taste-title {
+  display: grid;
+  gap: 4px;
+  margin: 0 40px 14px 2px
+}
+
+.taste-title b {
+  font-size: 16px;
+  color: rgba(255, 255, 255, .92);
+  letter-spacing: .06em
+}
+
+.taste-title small {
+  font-size: 10.5px;
+  color: rgba(255, 255, 255, .42);
+  letter-spacing: .16em;
+  text-transform: uppercase
+}
+
+.taste-body {
+  max-height: min(66vh, 620px);
+  overflow-y: auto;
+  padding-right: 4px
+}
+
+.taste-switch-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 4px
+}
+
+.taste-inline-label {
+  margin-left: 8px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, .45);
+  letter-spacing: .12em
+}
+
+.taste-chip {
+  height: 24px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, .12);
+  background: rgba(255, 255, 255, .045);
+  color: rgba(255, 255, 255, .62);
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all .22s
+}
+
+.taste-chip:hover {
+  color: #fff;
+  border-color: rgba(255, 255, 255, .24)
+}
+
+.taste-chip.active {
+  color: var(--champagne);
+  border-color: rgba(244, 210, 138, .46);
+  background: rgba(244, 210, 138, .085)
+}
+
+.taste-chip.big {
+  height: 30px;
+  font-size: 12px;
+  font-weight: 600
+}
+
+.taste-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin: 12px 0 8px
+}
+
+.taste-stats span {
+  display: grid;
+  gap: 2px;
+  padding: 9px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, .07);
+  border-left: 2px solid rgba(244, 210, 138, .34);
+  background: rgba(255, 255, 255, .035)
+}
+
+.taste-stats b {
+  font-family: var(--font-mono);
+  font-size: 17px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, .9)
+}
+
+.taste-stats small {
+  font-size: 10px;
+  color: rgba(255, 255, 255, .42);
+  letter-spacing: .06em
+}
+
+.taste-note {
+  font-size: 11px;
+  line-height: 1.65;
+  color: rgba(255, 255, 255, .5);
+  margin: 6px 0
+}
+
+.taste-note.small {
+  font-size: 10.5px;
+  color: rgba(255, 255, 255, .4)
+}
+
+.taste-note.error {
+  color: #ffb3bd
+}
+
+.taste-block-title {
+  margin: 16px 0 7px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .14em;
+  color: rgba(255, 255, 255, .58)
+}
+
+.taste-drop {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px dashed rgba(255, 255, 255, .16);
+  background: rgba(255, 255, 255, .028);
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, .52);
+  transition: all .2s
+}
+
+.taste-drop.over {
+  border-color: rgba(244, 210, 138, .5);
+  background: rgba(244, 210, 138, .06);
+  color: rgba(255, 255, 255, .78)
+}
+
+.taste-file-label {
+  color: var(--champagne);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px
+}
+
+.taste-provider-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px
+}
+
+.taste-provider {
+  display: grid;
+  gap: 2px;
+  min-width: 92px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, .08);
+  background: rgba(255, 255, 255, .03);
+  color: rgba(255, 255, 255, .58);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: all .2s
+}
+
+.taste-provider span {
+  font-size: 11.5px;
+  font-weight: 600
+}
+
+.taste-provider small {
+  font-size: 9.5px;
+  color: rgba(255, 255, 255, .38)
+}
+
+.taste-provider.ready {
+  border-color: rgba(244, 210, 138, .22)
+}
+
+.taste-provider.ready:hover,
+.taste-provider.active {
+  border-color: rgba(244, 210, 138, .46);
+  background: rgba(244, 210, 138, .075);
+  color: #fff
+}
+
+.taste-pl-head {
+  margin: 12px 0 6px;
+  font-size: 10.5px;
+  color: rgba(255, 255, 255, .44)
+}
+
+.taste-pl-list {
+  display: grid;
+  gap: 2px;
+  max-height: 190px;
+  overflow-y: auto;
+  padding-right: 4px
+}
+
+.taste-pl-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 9px;
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, .68);
+  cursor: pointer
+}
+
+.taste-pl-row:hover {
+  background: rgba(255, 255, 255, .04)
+}
+
+.taste-pl-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis
+}
+
+.taste-pl-count {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: rgba(255, 255, 255, .4);
+  flex-shrink: 0
+}
+
+.taste-primary-btn {
+  margin-top: 10px;
+  width: 100%;
+  height: 34px;
+  border-radius: 11px;
+  border: 1px solid rgba(244, 210, 138, .42);
+  background: rgba(244, 210, 138, .1);
+  color: var(--champagne);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all .2s
+}
+
+.taste-primary-btn:hover:not(:disabled) {
+  background: rgba(244, 210, 138, .16);
+  color: #fff
+}
+
+.taste-primary-btn:disabled {
+  opacity: .62;
+  cursor: default
+}
+
+.taste-source-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, .06);
+  background: rgba(255, 255, 255, .025);
+  margin-bottom: 4px
+}
+
+.taste-source-kind {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, .12);
+  color: rgba(255, 255, 255, .58);
+  flex-shrink: 0
+}
+
+.taste-source-kind.playlist {
+  border-color: rgba(244, 210, 138, .26);
+  color: rgba(244, 210, 138, .8)
+}
+
+.taste-source-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, .7)
+}
+
+.taste-source-count {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: rgba(255, 255, 255, .42);
+  flex-shrink: 0
+}
+
+.taste-mini-btn {
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, .12);
+  background: rgba(255, 255, 255, .04);
+  color: rgba(255, 255, 255, .6);
+  font-family: inherit;
+  font-size: 10.5px;
+  cursor: pointer;
+  flex-shrink: 0
+}
+
+.taste-mini-btn:hover {
+  color: #fff;
+  border-color: rgba(255, 255, 255, .26)
+}
+
+/* 破坏性动作一律两步确认：第一下只进入待确认态并染危险色，第二下才真删 */
+.taste-mini-btn.danger {
+  border-color: rgba(217, 91, 103, .5);
+  color: #ffc3cb;
+  background: rgba(217, 91, 103, .1)
+}
+
+.taste-source-row.pending {
+  border-color: rgba(217, 91, 103, .22)
+}
+
+.taste-danger-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, .06)
+}
+
+.taste-body .desc {
+  font-size: 11px;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, .48);
+  margin: 4px 0 0
+}

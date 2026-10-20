@@ -18,6 +18,7 @@
     'js/mods/30-danger-archive.js',
     'js/mods/40-widgets.js',
     'js/mods/50-provider-fallback.js',
+    'js/mods/60-taste-profile.js',
   ];
 
   function read(path) {

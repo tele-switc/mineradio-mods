@@ -347,6 +347,17 @@
       background: rgba(255, 255, 255, .03)
     }
 
+    /* 口味理由徽章：主界面那行用的是香槟 + 细色条（.tag-taste），这里同口径但换薄荷，
+       免得和 B 站"合集/段数"那枚同色读成一件事 */
+    .qs-badge.taste {
+      color: rgba(190, 236, 222, .82);
+      border-color: rgba(150, 220, 205, .22);
+      background: rgba(150, 220, 205, .055);
+      max-width: 150px;
+      overflow: hidden;
+      text-overflow: ellipsis
+    }
+
     /* "直接播整条"那颗：做成 span 而不是 button —— .qs-row 自己已经是 <button>，
        按钮里套按钮是非法 HTML，点子节点还会被行的委托当成"展开分段"。 */
     .qs-row-play {
@@ -603,6 +614,12 @@
           ? '<span class="qs-row-play" role="button" tabindex="-1" data-qs-play-row="' + i
             + '" title="直接播这一条，不展开分段">▶</span>'
           : '';
+        // 口味理由：宿主的 fetchMusicSearchResults 已经算好 _taste*，浮窗只照原样画，
+        // 不在这里另立一套判据（与 qsMeta 同一口径）
+        var taste = song._tasteReason
+          ? '<span class="qs-badge taste" title="' + esc(song._tasteDetail || song._tasteReason) + '">'
+            + esc(song._tasteReason) + '</span>'
+          : '';
         return '<button class="qs-row' + (i === active ? ' active' : '')
           + (isPack ? ' is-collection-head' : (isPart ? ' is-part' : ''))
           + '" type="button" data-qs-index="' + i + '">'
@@ -612,6 +629,7 @@
           + '<span class="qs-row-artist">' + esc(rowSub(song, isRadio)) + '</span>'
           + '</span>'
           + '<span class="qs-row-side">'
+          + taste
           + badge
           + play
           + '<span class="qs-src" data-src="' + esc(src) + '">' + esc(sourceLabel(src)) + '</span>'

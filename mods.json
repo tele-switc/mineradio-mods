@@ -189,6 +189,21 @@
       "note": "这一族是**整模块接管**：外挂以同名全局函数重新声明上游 11-provider-fallback.js 的那一套（不整份替换上游文件，否则 uninstall 回不到逐字节原版）。代价：上游改了这条链时 --verify 看不出来，只有真跑能发现。internetarchive / radioparadise 明确不参与自动换源（没有「同名同歌手同一录音」的可靠判据，自动接管会播错内容）；咪咕不在包里，所以免登录池子只有 netease + bilibili，「有咪咕会话就提前」那两段留在开发版没接。"
     },
     {
+      "id": "taste-profile",
+      "title": "口味档案与搜索个性化（导入 TXT/CSV/JSON/M3U 或拉取平台歌单，搜索时同名版本优先与个性化提权）",
+      "enabled": true,
+      "anchors": ["renderer-modules", "main-process", "preload-main"],
+      "files": [
+        { "from": "files/desktop/mods-host.js", "to": "desktop/mods-host.js" },
+        { "from": "files/desktop/mods-taste-store.js", "to": "desktop/mods-taste-store.js" },
+        { "from": "files/public/js/mods/loader.js", "to": "public/js/mods/loader.js" },
+        { "from": "files/public/js/mods/60-taste-profile.js", "to": "public/js/mods/60-taste-profile.js" },
+        { "from": "files/public/css/mods-taste-profile.css", "to": "public/css/mods-taste-profile.css" },
+        { "from": "files/public/quick-search.html", "to": "public/quick-search.html" }
+      ],
+      "note": "个人数据三条路：本机聆听（直接用已有的 mineradio-listen-stats-v1 现算，档案里不存副本）、文件导入（TXT/CSV/JSON/M3U）、连接平台拉收藏（网易云/QQ/酷狗/汽水/Spotify）。档案独立保存在 userData 目录下的 mineradio-taste-profile.json。搜索个性化加在 merge 之后，原分数一分不改，包含同名版本优先排序与理由徽章展示；按钮与模态框通过运行时注入，原版上游文件一行不改。"
+    },
+    {
       "id": "migu-source",
       "title": "咪咕音乐（需要会话：官方登录窗 + cookie 交给后端）",
       "enabled": false,

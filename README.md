@@ -49,7 +49,7 @@
    | `server-audio-type` | `server.js` | 1 行：音频容器类型（DASH 的 mp4a、IA 的 opus、RP 无扩展名的 AAC） |
    | `playback-gapless-url` | `13-playback-start-audio.js` | 1 行：无缝专辑预取的取址也认外挂源 |
 | `playback-url` | `13-playback-start-audio.js` | 1 行：主取址那串 if/else 之后，外挂源换掉直链 |
-| `preload-main` | `desktop/preload.js` | 一段桥接（沙箱预加载读不了磁盘，`contextBridge` 暴露出去的对象又冻结了，只能内联）。现在带 17 个方法：浮窗 5 + 存档 5 + 贴边组件 7 |
+| `preload-main` | `desktop/preload.js` | 一段桥接（沙箱预加载读不了磁盘，`contextBridge` 暴露出去的对象又冻结了，只能内联）。现在带 20 个方法：浮窗 5 + 存档 5 + 贴边组件 7 + 口味档案 3 |
 
 2. **开机自动重注入**。安装时加 `--autostart`，会在
    `%LOCALAPPDATA%\MineradioMods\` 放一份外挂本体 + 一个登录时跑一次的检查：
@@ -109,6 +109,7 @@ node install.mjs --uninstall --mod quick-search  :: 只撤这一族，别的族�
 | `danger-archive` | ✅ 已可用 | **Ctrl+H 历史记录与状态存档**：按 `Ctrl+H`（或那排桌面按钮里新注入的「历史」那颗）直接打开面板，**没有密码门，也没有「一键清空」**（2026-10-12 按用户要求删的）。两个页签：**历史** = 搜索记录（上游 ≤10 条词）与聆听记录（上游 ≤180 条），点一行就是改名（回车保存 / Esc 取消），行尾那颗删这一条——只动你点的那一条，配置与累计统计都不动；**存档** = 状态快照，「存一份当前状态」把此刻的三条记录原样存下来（什么都不清），点一条整个回到那一刻（搜索记录、队列、当前曲目、进度），恢复前自动再留一条 `pre-restore` 退路，删除要走两步确认。存档落在 `%APPDATA%\Mineradio\mineradio-danger-archive.json`，**不在 localStorage**（它备份的正是 localStorage 那三条）、也不在安装目录（更新会没）；最多留 20 份，超了从最旧的丢，单文件上限 12 MB。改名走第五个通道 `set-label`，只写 `label` 字段，不用 remove + append（那样会把这条挤到最前面、时间线乱掉）。模态框、样式与那颗入口按钮都是运行时注入的，上游 `index.html` / `index.css` 一个字不动。 |
 | `edge-widgets` | ✅ 已可用 | **贴边播放小组件 + 屏幕边缘进度轨**：那排桌面按钮里多一颗「贴边」（运行时插入），点开是一个透明无边框的小控制台（封面/歌名/进度/上一首下一首/音量），可以拖到屏幕右、下、左边吸附；闲置或收到屏边时它让位给**整条屏幕边变成进度条**，指针回到那条边就自己展开，在进度条上点一下就跳到那一处。右键那颗按钮是换吸附边。两个窗口都是外挂自建的（浮窗是先例），所以不需要新锚点。 |
 | `auto-source-fallback` | ✅ 已可用 | **自动换源**：当前源取不到地址时，自己去其它源找同一首歌，找到就播并写明"已从 网易云 切到 B 站（音频流 · 码率）· 按标题与时长匹配的版本"。免登录那条链是 网易云 → B 站；B 站的采纳判据（翻唱/器乐改编/伴奏/变速/铃声都收并标注，教学/测评/反应视频拒）与音质档位共用同一份，从开发仓库一起搬来。**IA 与 RP 明确不参与自动换源**：这两个没有"同名同歌手同一录音"的可靠判据，自动接管会播错内容，比不播更糟。 |
+| `taste-profile` | ✅ 已可用 | **口味档案与搜索个性化**：从个人数据（本机聆听统计现算 + TXT/CSV/JSON/M3U 文件导入 + 网易云/QQ/酷狗/汽水/Spotify 平台歌单拉取）建立口味模型，落盘在 `%APPDATA%\Mineradio\mineradio-taste-profile.json`。搜索时在相关度排序后追加个性化加权，同名不同版本优先提权已收录版本（防高热度翻唱压制原版），并展示理由徽章。轻/标准/强三档可选，关掉即刻无副作用回退。按钮与模态框通过运行时注入，原版代码一行不改。 |
 | `migu-source` | 🚫 决定不做 | 咪咕要会话（官方登录窗 + cookie 交给后端）。本体文件 `migu-api.js` 留在包里但不投放，`mods.json` 的 `migu-source` 保持 `enabled:false`。连带自动换源的免登录池子只有 `netease + bilibili`。 |
 | `bili-collection-ui` | ✅ 已可用 | 主界面搜索结果行里的**分 P 面板**：包装上游 `searchSongResultHtml` 往行尾追加面板（样式抽成独立 `mods-bili-collection.css` 注入，不碰上游 CSS），展开 184 段那种合集、点某一段单独播、整包入队。并让上游 All 档的合并结果里并进 B 站那一页（用软件自己的 `scoreSongSearchResult` 重排，否则拼在末尾永远落在可见窗口之外）。 |
 | 其余（登录入口与音质档位 UI、托盘备用入口） | ⛔ 待搬 / 已放弃 | 每一族的落点、难度、要包装哪个函数都写在 [`docs/PORTING.md`](docs/PORTING.md)，是照着上游原版逐个核对过的。B 站非音乐过滤已随 `bili-source` 一起到位（在 `bilibili-api.js` 里，零锚点）。 |
