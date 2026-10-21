@@ -6,13 +6,13 @@
 #  这份要被安装器改写，绝不能是硬链接，否则改的是你正在用的那一份。
 #
 #  两个源目录都可以用环境变量改：
-#    MINERADIO_RUNTIME_SRC  装好的 Mineradio 根目录（取运行时文件），默认 E:\Projects\mineradio
+#    MINERADIO_RUNTIME_SRC  装好的 Mineradio 根目录（取运行时文件），默认 E:\Projects\03-个人工具\mineradio
 #    MINERADIO_DEV_REPO     上游源码仓库（取 .fixture 夹具），默认同一个
 #  产物固定落在本仓库的 .live/Mineradio（README 的下一步就指这个路径）。
 # ============================================================
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot            # tools/ 的上一级 = 仓库根
-$src = if ($env:MINERADIO_RUNTIME_SRC) { $env:MINERADIO_RUNTIME_SRC } else { 'E:\Projects\mineradio' }
+$src = if ($env:MINERADIO_RUNTIME_SRC) { $env:MINERADIO_RUNTIME_SRC } else { 'E:\Projects\03-个人工具\mineradio' }
 $dev = if ($env:MINERADIO_DEV_REPO) { $env:MINERADIO_DEV_REPO } else { $src }
 $dst = Join-Path $root '.live\Mineradio'
 $fixture = Join-Path $root '.fixture\stock-app'

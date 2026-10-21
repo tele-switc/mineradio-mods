@@ -14,7 +14,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 
-export const DEV_REPO = process.env.MINERADIO_DEV_REPO || 'E:/Projects/mineradio';
+export const DEV_REPO = process.env.MINERADIO_DEV_REPO || 'E:/Projects/03-个人工具/mineradio';
 export const BASELINE = 'd43de56';
 
 export function fixtureDir(pack) { return path.join(pack, '.fixture', 'stock-app'); }
