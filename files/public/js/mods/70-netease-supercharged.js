@@ -68,8 +68,27 @@
     window.playMode = 'fm';
     syncFmTrashButtonVisibility('fm');
     if (typeof window.updatePlayModeButton === 'function') window.updatePlayModeButton(true);
-    if (typeof window.showToast === 'function') window.showToast('🌟 正在启动双算法日推漫游（网易云品味 × 汽水信息流引擎）...');
-    return (window.apiJson ? window.apiJson('/api/feed/super-daily') : fetch('/api/feed/super-daily').then(function (r) { return r.json(); })).then(function (r) {
+    if (typeof window.showToast === 'function') window.showToast('🌟 正在根据你的品味生成双算法日推漫游...');
+
+    var clientSeeds = null;
+    try {
+      if (typeof window.loadListenStatsState === 'function') {
+        var stats = window.loadListenStatsState();
+        var songs = stats && stats.songs ? Object.values(stats.songs) : [];
+        songs.sort(function (a, b) { return (b.plays || 0) - (a.plays || 0); });
+        clientSeeds = {
+          keywords: typeof window.getTasteSearchSuggestions === 'function' ? window.getTasteSearchSuggestions() : [],
+          artists: stats && stats.artists ? Object.keys(stats.artists) : [],
+          anchorSongs: songs.slice(0, 10).map(function (s) { return { name: s.name, artist: s.artist, plays: s.plays, raw: s }; })
+        };
+      }
+    } catch (_) {}
+
+    var reqPromise = clientSeeds
+      ? fetch('/api/feed/super-daily', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(clientSeeds) }).then(function (r) { return r.json(); })
+      : (window.apiJson ? window.apiJson('/api/feed/super-daily') : fetch('/api/feed/super-daily').then(function (r) { return r.json(); }));
+
+    return reqPromise.then(function (r) {
       var tracks = (r && r.tracks || []).filter(function (s) { return s && s.id; });
       if (!tracks.length) return window.startPersonalFmMode();
       window.playQueue = tracks;
@@ -77,7 +96,7 @@
       if (typeof window.safeRenderQueuePanel === 'function') window.safeRenderQueuePanel('super-daily-start');
       if (typeof window.safeShelfRebuild === 'function') window.safeShelfRebuild('super-daily-start', true);
       if (typeof window.playQueueAt === 'function') window.playQueueAt(0);
-      if (typeof window.showToast === 'function') window.showToast('🌟 算法日推漫游已开启：' + tracks.length + ' 首无缝推流');
+      if (typeof window.showToast === 'function') window.showToast('🌟 算法日推漫游已开启：' + tracks.length + ' 首无缝推流（超懂你胃口）');
       return tracks;
     }).catch(function () {
       return window.startPersonalFmMode();

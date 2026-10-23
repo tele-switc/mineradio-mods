@@ -368,6 +368,205 @@ async function handleRpRoute(res, url, pn) {
   return false;
 }
 
+// ---------- 用户品味种子提取与自适应个性化推荐 ----------
+function extractTasteSeedsFromDisk(clientSeeds) {
+  const seeds = {
+    keywords: [],
+    artists: [],
+    anchorSongs: []
+  };
+
+  if (clientSeeds && typeof clientSeeds === 'object') {
+    if (Array.isArray(clientSeeds.keywords)) {
+      clientSeeds.keywords.forEach(k => { if (k && typeof k === 'string') seeds.keywords.push(k.trim()); });
+    }
+    if (Array.isArray(clientSeeds.artists)) {
+      clientSeeds.artists.forEach(a => { if (a && typeof a === 'string') seeds.artists.push(a.trim()); });
+    }
+    if (Array.isArray(clientSeeds.anchorSongs)) {
+      seeds.anchorSongs = clientSeeds.anchorSongs.filter(s => s && s.name);
+    }
+  }
+
+  try {
+    const archivePath = path.join(process.env.APPDATA || (os.homedir() + '/AppData/Roaming'), 'Mineradio', 'mineradio-danger-archive.json');
+    if (fs.existsSync(archivePath)) {
+      const archiveData = JSON.parse(fs.readFileSync(archivePath, 'utf8'));
+      if (archiveData && Array.isArray(archiveData.archives)) {
+        const songMap = new Map();
+        const artistMap = new Map();
+        const kwSet = new Set(seeds.keywords);
+
+        for (const arc of archiveData.archives) {
+          const searchStr = arc.state && arc.state['mineradio-search-history'];
+          if (searchStr) {
+            try {
+              const sh = JSON.parse(searchStr);
+              const items = Array.isArray(sh.items) ? sh.items : (Array.isArray(sh) ? sh : []);
+              items.forEach(q => {
+                if (q && q.length >= 2 && !kwSet.has(q)) kwSet.add(q.trim());
+              });
+            } catch (_) {}
+          }
+          const statsStr = arc.state && arc.state['mineradio-listen-stats-v1'];
+          if (statsStr) {
+            try {
+              const stats = JSON.parse(statsStr);
+              if (stats.songs) {
+                Object.values(stats.songs).forEach(s => {
+                  if (!s || !s.name) return;
+                  const k = (s.name + ' ' + (s.artist || '')).toLowerCase();
+                  const existing = songMap.get(k);
+                  const plays = Number(s.plays) || 0;
+                  const ms = Number(s.listenMs) || 0;
+                  if (!existing || plays > existing.plays) {
+                    songMap.set(k, { name: s.name, artist: s.artist, plays, listenMs: ms, raw: s });
+                  }
+                });
+              }
+              if (stats.artists) {
+                Object.values(stats.artists).forEach(a => {
+                  if (!a || !a.name) return;
+                  const plays = Number(a.plays) || 0;
+                  artistMap.set(a.name, (artistMap.get(a.name) || 0) + plays);
+                });
+              }
+            } catch (_) {}
+          }
+        }
+
+        const sortedSongs = Array.from(songMap.values()).sort((a, b) => b.plays - a.plays);
+        if (!seeds.anchorSongs.length) {
+          seeds.anchorSongs = sortedSongs.slice(0, 10);
+        }
+
+        sortedSongs.slice(0, 10).forEach(s => {
+          const t = s.name;
+          const isZimmer = /汉斯[·季默莫]|Hans Zimmer/i.test(t);
+          const isJuice = /Juice WRLD/i.test(t);
+          const isJustin = /Beauty And A Beat|Justin Bieber/i.test(t);
+          const isWasted = /Wasted/i.test(t);
+          const isInterstellar = /星际穿越|interstellar/i.test(t);
+          const isInception = /盗梦空间|Time/i.test(t);
+          const isF1 = /F1|狂飙飞车/i.test(t);
+          const isOdyssey = /奥德赛|The Trial of the Bow/i.test(t);
+          const isWarSong = /战歌|最后攻势|The King/i.test(t);
+
+          if (isWasted && isJuice) kwSet.add('Wasted Juice WRLD');
+          else if (isWasted) kwSet.add('Wasted 欧美说唱');
+          if (isZimmer && isInterstellar) kwSet.add('Hans Zimmer 星际穿越 原声');
+          if (isZimmer && isInception) kwSet.add('Hans Zimmer 盗梦空间 Time');
+          if (isZimmer && isF1) kwSet.add('Hans Zimmer F1 狂飙飞车');
+          if (isOdyssey) kwSet.add('奥德赛 史诗战歌 配乐');
+          if (isJustin) kwSet.add('Beauty And A Beat 动感鼓点版');
+          if (isWarSong) kwSet.add('最后攻势 The King 战歌');
+        });
+
+        if (kwSet.size < 3) {
+          kwSet.add('Hans Zimmer 史诗配乐');
+          kwSet.add('Wasted 欧美说唱');
+        }
+
+        seeds.keywords = Array.from(kwSet);
+        if (!seeds.artists.length) {
+          seeds.artists = Array.from(artistMap.entries()).sort((a, b) => b[1] - a[1]).map(e => e[0]).slice(0, 8);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[TasteSeeds] extract failed:', e.message);
+  }
+
+  return seeds;
+}
+
+async function fetchTasteAnchoredNcmRecommendations(ncmApi, limit = 24, clientSeeds = null) {
+  const seeds = extractTasteSeedsFromDisk(clientSeeds);
+  const kwList = seeds.keywords.length ? seeds.keywords : ['Hans Zimmer 史诗配乐', 'Wasted 欧美说唱', '动感鼓点'];
+  const pool = [];
+  const seenKeys = new Set();
+
+  function pushSong(s, reason, tag) {
+    if (!s || !s.id) return;
+    const k = (String(s.name || '') + ' ' + String(s.artist || '')).toLowerCase().replace(/\s+/g, '');
+    if (seenKeys.has(k)) return;
+    seenKeys.add(k);
+    s.feedReason = reason || '基于你的听歌偏好定制';
+    s.reasonTag = tag || '为你推荐';
+    pool.push(s);
+  }
+
+  const anchorSongs = (seeds.anchorSongs || []).map(a => {
+    const raw = a.raw || {};
+    return {
+      provider: raw.provider || raw.sourceKey || 'bilibili',
+      source: raw.sourceKey || raw.provider || 'bilibili',
+      type: raw.type || 'bilibili',
+      id: raw.id || raw.key,
+      name: raw.name || a.name,
+      artist: raw.artist || a.artist,
+      cover: raw.cover || '',
+      duration: raw.duration || 200,
+      feedReason: '你经常单曲循环的本命曲（已播放 ' + a.plays + ' 次）',
+      reasonTag: '常听常新'
+    };
+  });
+
+  const cloudsearchApi = ncmApi.cloudsearch || ncmApi.search;
+  const kwTasks = kwList.slice(0, 5).map(async (kw) => {
+    try {
+      if (typeof cloudsearchApi !== 'function') return [];
+      const plRes = await cloudsearchApi({ keywords: kw + ' 歌单', type: 1000, limit: 2, timestamp: Date.now() });
+      const pls = (plRes.body && plRes.body.result && plRes.body.result.playlists) || [];
+      const collected = [];
+      if (pls.length && pls[0].id && ncmApi.playlist_track_all) {
+        const tr = await ncmApi.playlist_track_all({ id: pls[0].id, limit: 8, timestamp: Date.now() });
+        const songs = (tr.body && (tr.body.songs || tr.body.tracks)) || [];
+        songs.forEach(raw => {
+          const s = mapNcmSong(raw);
+          if (s && s.id) collected.push({ s, reason: '基于你喜爱的【' + kw + '】探索', tag: '懂你胃口' });
+        });
+      }
+      if (!collected.length) {
+        const sRes = await cloudsearchApi({ keywords: kw, type: 1, limit: 6, timestamp: Date.now() });
+        const songs = (sRes.body && sRes.body.result && sRes.body.result.songs) || [];
+        songs.forEach(raw => {
+          const s = mapNcmSong(raw);
+          if (s && s.id) collected.push({ s, reason: '基于你喜爱的【' + kw + '】精准推荐', tag: '懂你胃口' });
+        });
+      }
+      return collected;
+    } catch (_) {
+      return [];
+    }
+  });
+
+  const kwResults = await Promise.all(kwTasks);
+  const exploreQueue = [];
+  let maxCol = Math.max(...kwResults.map(r => r.length), 0);
+  for (let c = 0; c < maxCol; c++) {
+    for (let r = 0; r < kwResults.length; r++) {
+      if (kwResults[r] && kwResults[r][c]) exploreQueue.push(kwResults[r][c]);
+    }
+  }
+
+  let aIdx = 0;
+  let eIdx = 0;
+  while (pool.length < limit && (aIdx < anchorSongs.length || eIdx < exploreQueue.length)) {
+    if (aIdx < anchorSongs.length) {
+      const anc = anchorSongs[aIdx++];
+      pushSong(anc, anc.feedReason, anc.reasonTag);
+    }
+    for (let i = 0; i < 2 && eIdx < exploreQueue.length && pool.length < limit; i++) {
+      const exp = exploreQueue[eIdx++];
+      pushSong(exp.s, exp.reason, exp.tag);
+    }
+    if (aIdx >= anchorSongs.length && eIdx >= exploreQueue.length) break;
+  }
+
+  return pool;
+}
+
 // ---- 网易云超级增强与双擎日推漫游 ----
 async function handleNeteaseRoute(req, res, url, pn) {
   const ncmApi = loadNcm();
@@ -381,6 +580,17 @@ async function handleNeteaseRoute(req, res, url, pn) {
   if (pn === '/api/feed/super-daily') {
     try {
       const mode = url.searchParams.get('mode') || 'hybrid';
+      let clientSeeds = null;
+      if (req.method === 'POST') {
+        try {
+          const rawBody = await new Promise((resolve) => {
+            let buf = '';
+            req.on('data', chunk => { buf += chunk; });
+            req.on('end', () => resolve(buf));
+          });
+          clientSeeds = JSON.parse(rawBody || '{}');
+        } catch (_) {}
+      }
       const tasks = [];
 
       const neteaseTask = (async () => {
@@ -397,6 +607,11 @@ async function handleNeteaseRoute(req, res, url, pn) {
               });
             }
           }
+        } catch (_) {}
+        // 未登录或日推为空：启动基于用户真实听歌偏好的自适应推荐
+        try {
+          const tasteSongs = await fetchTasteAnchoredNcmRecommendations(ncmApi, 24, clientSeeds);
+          if (tasteSongs && tasteSongs.length) return tasteSongs;
         } catch (_) {}
         try {
           if (ncmApi.personalized) {
