@@ -1351,7 +1351,7 @@ function tasteHookSearch() {
       if (typeof searchTasteTagHtml === 'function') {
         var tag = searchTasteTagHtml(s);
         if (tag) {
-          html = html.replace(/(<div class="search-result-title">[sS]*?)(</div>)/, '$1' + tag + '$2');
+          html = html.replace(/(<div class="search-result-title">[\s\S]*?)(<\/div>)/, '$1' + tag + '$2');
         }
       }
       return html;
