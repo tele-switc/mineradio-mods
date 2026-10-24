@@ -252,7 +252,8 @@ function extractTasteSeeds(clientSeeds) {
         const skillKey = item.key || tasteTitleKey({ name: item.name, artist: item.artist });
         if (skillKey) seeds.skipKeys.push(String(skillKey));
         const artist = String(item.artist || '').split(/\s*\/\s*|\s*,\s*/)[0].trim();
-        if (artist) seeds.skipArtists[artist] = (Number(seeds.skipArtists[artist]) || 0) + (Number(item.count) || 1);
+        const artistKey = artist ? tasteArtistKey({ artist }) : '';
+        if (artistKey) seeds.skipArtists[artistKey] = (Number(seeds.skipArtists[artistKey]) || 0) + (Number(item.count) || 1);
       });
     }
   }
