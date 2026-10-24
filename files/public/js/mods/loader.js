@@ -20,6 +20,7 @@
     'js/mods/50-provider-fallback.js',
     'js/mods/60-taste-profile.js',
     'js/mods/70-netease-supercharged.js',
+    'js/mods/75-full-playback-only.js',
   ];
 
   function read(path) {

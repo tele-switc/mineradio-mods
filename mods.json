@@ -85,6 +85,17 @@
       "blockNote": "上游那串 if/else 的兜底分支会拿 B 站的 bvid 去查网易云，多半回空；所以这一句只在 data 没东西时才替换，不抢上游的活"
     },
     {
+      "id": "playback-full-guard",
+      "title": "播放数据硬闸门（1 行：trial/preview 一律改成无地址，交给自动换源/跳下一首）",
+      "file": "public/js/modules/05-playback/13-playback-start-audio.js",
+      "mode": "insert-before",
+      "locator": "^      var retryPlaybackOpts = Object\\.assign\\(\\{\\}, opts, \\{ resumeAt:",
+      "block": [
+        "      try { data = window.__mrModsGuardPlaybackData ? window.__mrModsGuardPlaybackData(data, song) : data; } catch (e) { }"
+      ],
+      "blockNote": "外挂包的全局'只播能完整听完'闸门。上游自己若已加过同样判断，这里只是重复一次，不改变结果。"
+    },
+    {
       "id": "preload-main",
       "title": "主窗口预加载桥接（contextBridge 对象一旦 expose 就冻结，只能在这里加一段）",
       "file": "desktop/preload.js",
@@ -375,6 +386,10 @@
           "to": "mods/server-api.js"
         },
         {
+          "from": "files/mods/recommendation-engine.js",
+          "to": "mods/recommendation-engine.js"
+        },
+        {
           "from": "files/public/js/mods/loader.js",
           "to": "public/js/mods/loader.js"
         },
@@ -383,7 +398,27 @@
           "to": "public/js/mods/70-netease-supercharged.js"
         }
       ],
-      "note": "背后引擎依托网易云音乐与汽水音乐的双推荐算法，借鉴现代短视频信息流推流架构。支持算法日推漫游（切歌自动探知心流、静默追加推荐，越刷越准，永不断流）、私人电台 FM 漫游（内置算法垃圾桶淘汰过滤）、官方权威排行榜、音乐云盘与本地私有仓（已登录同步网易云盘，未登录无缝转为本地私有曲库）、最近播放歌曲；单曲支持心动模式与相似歌曲推荐；搜索栏秒级解析歌单分享链接并直接开播。并在搜索框正下方提供【快捷探索胶囊栏】，一键直达核心推荐流。"
+      "note": "背后引擎依托网易云音乐与汽水音乐的推荐能力，2026-10-24 改为真实听歌锚点走 simi_song、中文题材走 B 站完整音频；接受前端实时反馈（垃圾桶/跳过/最近听歌），队列快见底时静默追加新一批，跳过和不喜欢会立即影响下一批。支持私人电台 FM 漫游、官方权威排行榜、音乐云盘与本地私有仓、最近播放歌曲；单曲支持心动模式与相似歌曲推荐；搜索栏秒级解析歌单分享链接并直接开播。并在搜索框正下方提供【快捷探索胶囊栏】，一键直达核心推荐流。所有日推候选先过'能完整听完'闸门。"
+    },
+    {
+      "id": "full-playback-only",
+      "title": "全局只播能完整听完的歌（搜索/歌单过滤 + 试听片段硬拦截 + 实时反馈）",
+      "enabled": true,
+      "anchors": [
+        "renderer-modules",
+        "playback-full-guard"
+      ],
+      "files": [
+        {
+          "from": "files/public/js/mods/loader.js",
+          "to": "public/js/mods/loader.js"
+        },
+        {
+          "from": "files/public/js/mods/75-full-playback-only.js",
+          "to": "public/js/mods/75-full-playback-only.js"
+        }
+      ],
+      "note": "用户口径：整个软件不允许出现只能听 30~60 秒试听的歌。搜索、歌单、日推、FM、心动/相似、最近播放先按元数据过滤；播放路径再加一道硬闸门，trial/preview 一律当无地址处理，自动换源或跳下一首。同时记录本机垃圾桶与短播跳过，下一次日推立即排除/降权。"
     },
     {
       "id": "migu-source",

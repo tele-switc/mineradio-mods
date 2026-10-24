@@ -321,7 +321,7 @@ test('app 目录里那份 mods/reapply.mjs 单独也跑得起来（更新后手�
       out = execFileSync(process.execPath, [path.join(app, 'mods', 'reapply.mjs')],
         { encoding: 'utf8', env: { ...process.env, MINERADIO_MODS_STATE: state } });
     } catch (e) { assert.fail(`跑不起来：${e.message}${e.stdout || ''}`); }
-    UPSTREAM_FILES.forEach((f) => assert.equal(marked(app, f), f === 'server.js' ? 3 : f.includes('13-playback') ? 2 : 1,
+    UPSTREAM_FILES.forEach((f) => assert.equal(marked(app, f), f === 'server.js' ? 3 : f.includes('13-playback') ? 3 : 1,
       `${f} 没被补回来：${out}`));
     // 桥接那段是从 blocks/ 取的：拿不到就得跳过，不能插一对空标记骗过去
     assert.match(fs.readFileSync(path.join(app, 'desktop/preload.js'), 'utf8'), /desktopMods/,

@@ -17,40 +17,91 @@
     }
   }
 
-  // 1. 注入私人电台模式与双算法漫游引擎
-  if (typeof window.fetchNextPersonalFmTracks !== 'function') {
-    var personalFmFetching = false;
-    window.fetchNextPersonalFmTracks = function (playImmediately) {
-      if (personalFmFetching) return Promise.resolve([]);
-      personalFmFetching = true;
-      var endpoint = '/api/feed/super-daily';
-      return (window.apiJson ? window.apiJson(endpoint) : fetch(endpoint).then(function (r) { return r.json(); })).then(function (r) {
-        var incoming = (r && r.tracks || []).filter(function (s) { return s && s.id; });
-        if (!incoming.length) return [];
-        var queue = window.playQueue || [];
-        var existingIds = new Set(queue.map(function (s) { return String(s.id); }));
-        var newTracks = incoming.filter(function (s) { return !existingIds.has(String(s.id)); });
-        if (!newTracks.length) newTracks = incoming;
-        if (playImmediately) {
-          window.playQueue = newTracks;
-          window.currentIdx = 0;
-          if (typeof window.safeRenderQueuePanel === 'function') window.safeRenderQueuePanel('personal-fm-start');
-          if (typeof window.safeShelfRebuild === 'function') window.safeShelfRebuild('personal-fm-start', true);
-          if (typeof window.playQueueAt === 'function') window.playQueueAt(0);
-        } else {
-          queue.push.apply(queue, newTracks);
-          if (typeof window.safeRenderQueuePanel === 'function') window.safeRenderQueuePanel('personal-fm-append');
-          if (typeof window.safeShelfRebuild === 'function') window.safeShelfRebuild('personal-fm-append', true);
-        }
-        return newTracks;
-      }).catch(function (err) {
-        console.warn('[PersonalFM] fetch error:', err);
-        return [];
-      }).finally(function () {
-        personalFmFetching = false;
-      });
-    };
+  // 1. 注入私人电台模式与双算法漫游引擎（实时版：每批都带最新听歌历史/垃圾桶/跳过）
+  function mrQueueKey(song) {
+    if (typeof window.queueItemKey === 'function') {
+      try { return window.queueItemKey(song); } catch (_) {}
+    }
+    return String((song && (song.provider || song.source || song.type)) || '') + ':' +
+      String(song && (song.id || song.bvid) || '');
   }
+
+  function mrBuildDailySeeds() {
+    // 75 号模块会给出带 history/trash/skips 的完整种子；没有它时退回基础种子
+    if (typeof window.__mrModsBuildTasteSeeds === 'function') {
+      try {
+        var rich = window.__mrModsBuildTasteSeeds();
+        if (rich) return rich;
+      } catch (_) {}
+    }
+    try {
+      if (typeof window.loadListenStatsState !== 'function') return null;
+      var stats = window.loadListenStatsState();
+      var songs = stats && stats.songs ? Object.keys(stats.songs).map(function (key) { return stats.songs[key]; }) : [];
+      var quality = function (song) {
+        return (Number(song.plays) || 0) + (Number(song.completed) || 0) * 2 + (Number(song.listenMs) || 0) / 60000;
+      };
+      songs.sort(function (a, b) { return quality(b) - quality(a); });
+      var history = typeof window.readSearchHistory === 'function' ? window.readSearchHistory() : [];
+      return {
+        keywords: history.slice(0, 12),
+        artists: stats && stats.artists ? Object.keys(stats.artists) : [],
+        anchorSongs: songs.slice(0, 12).map(function (song) {
+          return {
+            name: song.name,
+            artist: song.artist,
+            plays: song.plays,
+            listenMs: song.listenMs,
+            completed: song.completed,
+            raw: song,
+          };
+        }),
+      };
+    } catch (_) {
+      return null;
+    }
+  }
+
+  var personalFmFetching = false;
+  window.fetchNextPersonalFmTracks = function (playImmediately) {
+    if (personalFmFetching) return Promise.resolve([]);
+    personalFmFetching = true;
+    var endpoint = '/api/feed/super-daily';
+    var seeds = mrBuildDailySeeds();
+    var request = seeds
+      ? fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(seeds),
+        }).then(function (res) { return res.json(); })
+      : (window.apiJson ? window.apiJson(endpoint) : fetch(endpoint).then(function (r) { return r.json(); }));
+    return Promise.resolve(request).then(function (r) {
+      var incoming = (r && r.tracks || []).filter(function (s) { return s && s.id; });
+      if (!incoming.length) return [];
+      var queue = window.playQueue || [];
+      var existing = new Set(queue.map(mrQueueKey));
+      var newTracks = incoming.filter(function (s) { return !existing.has(mrQueueKey(s)); });
+      if (!newTracks.length && playImmediately) newTracks = incoming;
+      if (!newTracks.length) return [];
+      if (playImmediately) {
+        window.playQueue = newTracks;
+        window.currentIdx = 0;
+        if (typeof window.safeRenderQueuePanel === 'function') window.safeRenderQueuePanel('personal-fm-start');
+        if (typeof window.safeShelfRebuild === 'function') window.safeShelfRebuild('personal-fm-start', true);
+        if (typeof window.playQueueAt === 'function') window.playQueueAt(0);
+      } else {
+        queue.push.apply(queue, newTracks);
+        if (typeof window.safeRenderQueuePanel === 'function') window.safeRenderQueuePanel('personal-fm-append');
+        if (typeof window.safeShelfRebuild === 'function') window.safeShelfRebuild('personal-fm-append', true);
+      }
+      return newTracks;
+    }).catch(function (err) {
+      console.warn('[PersonalFM] fetch error:', err);
+      return [];
+    }).finally(function () {
+      personalFmFetching = false;
+    });
+  };
 
   window.startPersonalFmMode = function () {
     window.playMode = 'fm';
@@ -70,20 +121,7 @@
     if (typeof window.updatePlayModeButton === 'function') window.updatePlayModeButton(true);
     if (typeof window.showToast === 'function') window.showToast('🌟 正在根据你的品味生成双算法日推漫游...');
 
-    var clientSeeds = null;
-    try {
-      if (typeof window.loadListenStatsState === 'function') {
-        var stats = window.loadListenStatsState();
-        var songs = stats && stats.songs ? Object.values(stats.songs) : [];
-        songs.sort(function (a, b) { return (b.plays || 0) - (a.plays || 0); });
-        clientSeeds = {
-          keywords: typeof window.getTasteSearchSuggestions === 'function' ? window.getTasteSearchSuggestions() : [],
-          artists: stats && stats.artists ? Object.keys(stats.artists) : [],
-          anchorSongs: songs.slice(0, 10).map(function (s) { return { name: s.name, artist: s.artist, plays: s.plays, raw: s }; })
-        };
-      }
-    } catch (_) {}
-
+    var clientSeeds = mrBuildDailySeeds();
     var reqPromise = clientSeeds
       ? fetch('/api/feed/super-daily', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(clientSeeds) }).then(function (r) { return r.json(); })
       : (window.apiJson ? window.apiJson('/api/feed/super-daily') : fetch('/api/feed/super-daily').then(function (r) { return r.json(); }));
@@ -96,7 +134,11 @@
       if (typeof window.safeRenderQueuePanel === 'function') window.safeRenderQueuePanel('super-daily-start');
       if (typeof window.safeShelfRebuild === 'function') window.safeShelfRebuild('super-daily-start', true);
       if (typeof window.playQueueAt === 'function') window.playQueueAt(0);
-      if (typeof window.showToast === 'function') window.showToast('🌟 算法日推漫游已开启：' + tracks.length + ' 首无缝推流（超懂你胃口）');
+      var hidden = Number(r && r.hiddenUnplayable) || 0;
+      if (typeof window.showToast === 'function') {
+        window.showToast('🌟 算法日推漫游已开启：' + tracks.length + ' 首都能完整听' +
+          (hidden ? '（已挡掉 ' + hidden + ' 首试听/会员曲）' : ''));
+      }
       return tracks;
     }).catch(function () {
       return window.startPersonalFmMode();
@@ -106,11 +148,17 @@
   window.trashCurrentFmTrack = function () {
     var queue = window.playQueue || [];
     var song = window.currentIdx >= 0 && queue[window.currentIdx];
-    if (song && song.id) {
-      var url = '/api/fm_trash?id=' + encodeURIComponent(song.id);
-      if (window.apiJson) window.apiJson(url, { method: 'POST' }).catch(function () {});
-      else fetch(url, { method: 'POST' }).catch(function () {});
-      if (typeof window.showToast === 'function') window.showToast('🗑️ 已放入算法垃圾桶，不再为您推荐此曲');
+    if (song) {
+      // 先记本机垃圾桶：未登录网易云时 /api/fm_trash 只是空操作，下一次日推靠这份实时反馈排除它
+      if (typeof window.__mrModsMarkTrash === 'function') {
+        try { window.__mrModsMarkTrash(song); } catch (_) {}
+      }
+      if (song.id) {
+        var url = '/api/fm_trash?id=' + encodeURIComponent(song.id);
+        if (window.apiJson) window.apiJson(url, { method: 'POST' }).catch(function () {});
+        else fetch(url, { method: 'POST' }).catch(function () {});
+      }
+      if (typeof window.showToast === 'function') window.showToast('🗑️ 已放入垃圾桶，下一批不再推荐此曲');
     }
     if (typeof window.nextTrack === 'function') window.nextTrack(true);
   };
